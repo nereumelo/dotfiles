@@ -1,24 +1,45 @@
 #!/bin/bash
 set -euo pipefail
 
-read -r -p "Username: " user
-while [[ -z "${user}" ]]; do
-  read -r -p "Username (required): " user
-done
+if [[ ! -r /dev/tty ]]; then
+  echo "No controlling terminal. Use: WSL_USER=... WSL_PASSWORD=... curl ... | bash" >&2
+  exit 1
+fi
 
-while true; do
-  read -r -s -p "Password: " password
-  echo
-  read -r -s -p "Confirm password: " password_confirm
-  echo
-  if [[ -z "${password}" ]]; then
-    echo "Password cannot be empty." >&2
-  elif [[ "${password}" != "${password_confirm}" ]]; then
-    echo "Passwords do not match. Try again." >&2
-  else
-    break
-  fi
-done
+read_tty() {
+  local var=$1 prompt=$2
+  IFS= read -r -p "${prompt}" "${var}" </dev/tty
+}
+
+read_tty_secret() {
+  local var=$1 prompt=$2
+  IFS= read -r -s -p "${prompt}" "${var}" </dev/tty
+  echo >&2
+}
+
+user="${WSL_USER:-}"
+password="${WSL_PASSWORD:-}"
+
+if [[ -z "${user}" ]]; then
+  read_tty user "Username: "
+  while [[ -z "${user}" ]]; do
+    read_tty user "Username (required): "
+  done
+fi
+
+if [[ -z "${password}" ]]; then
+  while true; do
+    read_tty_secret password "Password: "
+    read_tty_secret password_confirm "Confirm password: "
+    if [[ -z "${password}" ]]; then
+      echo "Password cannot be empty." >&2
+    elif [[ "${password}" != "${password_confirm}" ]]; then
+      echo "Passwords do not match. Try again." >&2
+    else
+      break
+    fi
+  done
+fi
 
 pacman-key --init
 pacman-key --populate archlinux
