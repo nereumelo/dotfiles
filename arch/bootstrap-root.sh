@@ -24,7 +24,14 @@ pacman-key --init
 pacman-key --populate archlinux
 pacman -Sy archlinux-keyring --noconfirm
 pacman -Syu --noconfirm
-pacman -S --needed --noconfirm base-devel git sudo vi which man-db fish
+BASE_PKGS=(
+    base-devel git sudo fish openssh gnupg keychain which
+    docker docker-compose
+    curl wget unzip zip less man-db
+    vi neovim ripgrep fd fzf bat eza jq
+    zoxide git-delta btop uv
+)
+pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
 
 useradd -m -G wheel -s /usr/bin/fish "${user}"
 echo "${user}:${password}" | chpasswd
