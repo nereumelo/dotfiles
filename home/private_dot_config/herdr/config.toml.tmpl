@@ -1,0 +1,6 @@
+{{- $t := index .themes .theme -}}
+# Managed by chezmoi — theme only (do not manage whole ~/.config/herdr/)
+
+[theme]
+name = {{ index $t "herdr" | quote }}
+auto_switch = false

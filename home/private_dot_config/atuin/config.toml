@@ -1,0 +1,10 @@
+# Atuin — local history only (no cloud sync in v1)
+## sync
+auto_sync = false
+update_check = false
+
+## keys
+enter_accept = true
+
+## style
+style = "compact"

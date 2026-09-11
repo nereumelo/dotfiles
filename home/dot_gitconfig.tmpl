@@ -1,0 +1,28 @@
+# Managed by chezmoi — personal defaults; work via includeIf ~/work/
+
+[user]
+	name = {{ .git.name | quote }}
+	email = {{ .git.email | quote }}
+{{- if stat (joinPath .chezmoi.homeDir ".ssh/home-personal.pub") }}
+	signingkey = {{ joinPath .chezmoi.homeDir ".ssh/home-personal.pub" | quote }}
+{{- end }}
+
+[init]
+	defaultBranch = main
+
+{{- if stat (joinPath .chezmoi.homeDir ".ssh/home-personal.pub") }}
+[gpg]
+	format = ssh
+
+[gpg "ssh"]
+	allowedSignersFile = {{ joinPath .chezmoi.homeDir ".ssh/allowed_signers" | quote }}
+
+[commit]
+	gpgsign = true
+
+[tag]
+	gpgsign = true
+{{- end }}
+
+[includeIf "gitdir:~/work/"]
+	path = ~/.config/git/config-work

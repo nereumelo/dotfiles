@@ -1,0 +1,18 @@
+# Optional work Git profile (loaded via includeIf gitdir:~/work/)
+{{- if and .git.work.enabled .git.work.name .git.work.email }}
+
+[user]
+	name = {{ .git.work.name | quote }}
+	email = {{ .git.work.email | quote }}
+{{- if stat (joinPath .chezmoi.homeDir ".ssh/work.pub") }}
+	signingkey = {{ joinPath .chezmoi.homeDir ".ssh/work.pub" | quote }}
+{{- end }}
+{{- else }}
+
+# Work profile disabled. Enable in .chezmoidata.toml:
+#   [git.work]
+#   enabled = true
+#   name = "..."
+#   email = "..."
+# and place ~/.ssh/work.pub when signing with a work key.
+{{- end }}

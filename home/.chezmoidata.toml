@@ -1,0 +1,27 @@
+theme = "tokyo-night"
+
+[git]
+name = "Nereu Melo"
+email = "nereuvictor1@gmail.com"
+
+# Optional work profile (includeIf gitdir:~/work/). Leave enabled=false until filled in.
+[git.work]
+enabled = false
+name = ""
+email = ""
+
+[themes.tokyo-night]
+wezterm = "Tokyo Night"
+herdr = "tokyo-night"
+nvim = "tokyonight"
+nvim_style = "night"
+bat = "tokyonight_night"
+starship = "tokyo-night"
+
+[themes.catppuccin]
+wezterm = "Catppuccin Mocha"
+herdr = "catppuccin"
+nvim = "tokyonight"
+nvim_style = "night"
+bat = "Catppuccin Mocha"
+starship = "catppuccin"

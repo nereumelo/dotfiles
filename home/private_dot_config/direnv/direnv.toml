@@ -1,0 +1,4 @@
+# direnv defaults
+[global]
+load_dotenv = false
+strict_env = true

@@ -1,0 +1,10 @@
+{{- /* Principals for git verify-commit / log --show-signature */ -}}
+{{- $personalPub := joinPath .chezmoi.homeDir ".ssh/home-personal.pub" -}}
+{{- if stat $personalPub -}}
+{{- $parts := splitList " " (trim (output "cat" $personalPub)) -}}
+{{ .git.email }} namespaces="git" {{ index $parts 0 }} {{ index $parts 1 }}
+{{- end -}}
+{{- if and .git.work.enabled .git.work.email (stat (joinPath .chezmoi.homeDir ".ssh/work.pub")) }}
+{{- $workParts := splitList " " (trim (output "cat" (joinPath .chezmoi.homeDir ".ssh/work.pub"))) }}
+{{ .git.work.email }} namespaces="git" {{ index $workParts 0 }} {{ index $workParts 1 }}
+{{- end }}

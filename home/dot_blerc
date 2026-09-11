@@ -1,0 +1,6 @@
+# ble.sh config — fzf via ble contrib; atuin after fzf so C-r is atuin.
+# Do NOT eval "$(fzf --bash)" directly (conflicts with ble keybindings).
+
+ble-import -d integration/fzf-completion
+ble-import -d integration/fzf-key-bindings
+ble-import -C 'eval "$(atuin init bash)"' integration/fzf-key-bindings

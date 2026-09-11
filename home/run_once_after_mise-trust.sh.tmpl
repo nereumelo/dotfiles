@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Post-apply: trust mise config and install global tools (user only).
+set -euo pipefail
+
+if ! command -v mise >/dev/null 2>&1; then
+  echo "mise not found; skip"
+  exit 0
+fi
+
+mise trust "$HOME/.config/mise/config.toml" 2>/dev/null || true
+mise install

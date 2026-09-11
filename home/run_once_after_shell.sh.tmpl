@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Post-apply shell hints (no package installs).
+set -euo pipefail
+
+mkdir -p "$HOME/work"
+mkdir -p "$HOME/.config/bash"
+
+if [[ ! -f "$HOME/.config/bash/aliases.local.sh" ]]; then
+  cat >"$HOME/.config/bash/aliases.local.sh" <<'EOF'
+# Machine-only aliases (not managed by chezmoi / not in git)
+EOF
+fi
+
+echo "Shell dots applied. Open a new login shell for full effect."

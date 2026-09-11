@@ -1,0 +1,33 @@
+# Local / machine-only
+**/.ssh/config.local
+**/aliases.local.sh
+**/*.local.toml
+**/.chezmoi.local.toml
+
+# Secrets / private keys
+**/*.pem
+**/*_rsa
+**/*_ed25519
+**/id_rsa
+**/id_ed25519
+**/home-personal
+**/vps_srv*
+!**/*.pub
+
+# Herdr runtime (never manage whole dir)
+**/herdr/*.sock
+**/herdr/*.log
+**/herdr/session.json
+**/herdr/logs/
+
+# OpenCode / agent secrets
+**/.opencode/
+**/opencode.json
+**/*secret*
+**/*credential*
+
+# Chezmoi / editor noise
+.DS_Store
+*.swp
+*~
+.chezmoitemp/

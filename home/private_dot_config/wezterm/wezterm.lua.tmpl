@@ -1,0 +1,17 @@
+{{- $t := index .themes .theme -}}
+-- WezTerm config (managed by chezmoi)
+-- Theme: {{ .theme }}
+
+local wezterm = require("wezterm")
+local config = wezterm.config_builder()
+
+config.color_scheme = {{ index $t "wezterm" | quote }}
+config.font = wezterm.font("JetBrainsMono Nerd Font")
+config.font_size = 12.0
+config.hide_tab_bar_if_only_one_tab = true
+config.window_padding = { left = 8, right = 8, top = 6, bottom = 6 }
+
+-- Prefer Bitwarden / OpenSSH agent over WezTerm's mux agent
+config.mux_enable_ssh_agent = false
+
+return config

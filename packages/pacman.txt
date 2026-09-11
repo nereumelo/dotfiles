@@ -1,0 +1,45 @@
+# Core / stack
+base-devel
+git
+curl
+chezmoi
+mise
+starship
+neovim
+wezterm
+ttf-jetbrains-mono-nerd
+openssh
+bitwarden
+bash-completion
+direnv
+
+# Docker (omit set when SKIP_DOCKER=1)
+docker
+docker-compose
+docker-buildx
+lazydocker
+
+# UX CLIs
+zoxide
+fzf
+eza
+atuin
+bat
+glow
+fd
+ripgrep
+bottom
+sd
+jq
+go-yq
+
+# Essential deps
+which
+wget
+zip
+unzip
+tealdeer
+less
+man-db
+tree
+rsync

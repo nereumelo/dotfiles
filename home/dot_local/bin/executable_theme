@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# theme — switch system-wide theme via chezmoi data + apply
+set -euo pipefail
+
+SOURCE_DATA="${CHEZMOI_SOURCE_DIR:-$(chezmoi source-path 2>/dev/null || true)}/.chezmoidata.toml"
+if [[ ! -f "$SOURCE_DATA" ]]; then
+  # Fallback: this repo layout
+  SOURCE_DATA="${HOME}/me/dotfiles/home/.chezmoidata.toml"
+fi
+
+if [[ ! -f "$SOURCE_DATA" ]]; then
+  echo "error: cannot find .chezmoidata.toml" >&2
+  exit 1
+fi
+
+list_themes() {
+  awk '
+    /^\[themes\./ {
+      name=$0
+      sub(/^\[themes\./, "", name)
+      sub(/\].*/, "", name)
+      print name
+    }
+  ' "$SOURCE_DATA"
+}
+
+current_theme() {
+  awk -F' *= *' '/^theme *=/ { gsub(/"/, "", $2); print $2; exit }' "$SOURCE_DATA"
+}
+
+usage() {
+  echo "Usage: theme [<name>]"
+  echo "Current: $(current_theme)"
+  echo "Available:"
+  list_themes | sed 's/^/  /'
+}
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 0
+fi
+
+name="$1"
+if ! list_themes | grep -qx "$name"; then
+  echo "error: unknown theme '$name'" >&2
+  usage >&2
+  exit 1
+fi
+
+# Update theme = "..." in source data (first match only)
+tmp="$(mktemp)"
+awk -v t="$name" '
+  BEGIN { done=0 }
+  /^theme *=/ && !done {
+    print "theme = \"" t "\""
+    done=1
+    next
+  }
+  { print }
+' "$SOURCE_DATA" >"$tmp"
+mv "$tmp" "$SOURCE_DATA"
+
+echo "theme → $name"
+chezmoi apply
+
+# Best-effort reloads
+if command -v herdr >/dev/null 2>&1; then
+  herdr server reload-config >/dev/null 2>&1 || true
+fi
+
+echo "Reload WezTerm / Neovim windows if colors look stale."
