@@ -1,117 +1,95 @@
 #!/usr/bin/env bash
-# bootstrap.sh — root bootstrap for Arch WSL dotfiles
-# Run as root inside a fresh Arch WSL session.
 set -euo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_SH="$REPO/install.sh"
-VERIFY_SH="$REPO/verify.sh"
-DEFAULT_USER="${DEFAULT_USER:-}"
+if [[ ! -r /dev/tty ]]; then
+  echo "No controlling terminal. Use: WSL_USER=... WSL_PASSWORD=... curl ... | bash" >&2
+  exit 1
+fi
 
-log()  { printf '==> %s\n' "$*"; }
-warn() { printf 'warning: %s\n' "$*" >&2; }
-die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
-
-need_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"; }
-
-pick_user() {
-  local u="${1:-${DEFAULT_USER:-}}"
-  if [[ -n "$u" ]]; then
-    printf '%s\n' "$u"
-    return 0
-  fi
-
-  if [[ -t 0 ]]; then
-    read -r -p "Target username to create/use: " u
-    [[ -n "$u" ]] || die "username is required"
-    printf '%s\n' "$u"
-    return 0
-  fi
-
-  die "set DEFAULT_USER=<name> or pass the username as the first argument"
+read_tty() {
+  local var=$1 prompt=$2
+  IFS= read -r -p "${prompt}" "${var}" </dev/tty
 }
 
-ensure_group() {
-  local group="$1"
-  if getent group "$group" >/dev/null 2>&1; then
-    return 0
-  fi
-  log "Creating group: $group"
-  groupadd "$group"
+read_tty_secret() {
+  local var=$1 prompt=$2
+  IFS= read -r -s -p "${prompt}" "${var}" </dev/tty
+  echo >&2
 }
 
-ensure_user() {
-  local user="$1"
-  if id "$user" >/dev/null 2>&1; then
-    log "User already exists: $user"
-  else
-    log "Creating user: $user"
-    useradd -m -s /bin/bash "$user"
-  fi
-}
+user="${WSL_USER:-}"
+password="${WSL_PASSWORD:-}"
 
-ensure_sudoers() {
-  local user="$1"
-  local sudoers_file="/etc/sudoers.d/90-$user-bootstrap"
-  log "Configuring sudo for $user"
-  install -d -m 0755 /etc/sudoers.d
-  cat >"$sudoers_file" <<EOF
-$user ALL=(ALL) NOPASSWD:ALL
+if [[ -z "${user}" ]]; then
+  read_tty user "Username: "
+  while [[ -z "${user}" ]]; do
+    read_tty user "Username (required): "
+  done
+fi
+
+if [[ -z "${password}" ]]; then
+  while true; do
+    read_tty_secret password "Password: "
+    read_tty_secret password_confirm "Confirm password: "
+    if [[ -z "${password}" ]]; then
+      echo "Password cannot be empty." >&2
+    elif [[ "${password}" != "${password_confirm}" ]]; then
+      echo "Passwords do not match. Try again." >&2
+    else
+      break
+    fi
+  done
+fi
+
+
+BASE_PKGS=(
+    base-devel git sudo openssh gnupg keychain which
+    docker docker-compose
+    curl wget unzip zip less man-db
+    vi neovim ripgrep fd fzf bat eza jq
+    zoxide git-delta btop uv
+)
+
+# 1. Ajuste e atualização do keyring
+rm -rf /etc/pacman.d/gnupg
+pacman-key --init
+pacman-key --populate archlinux
+pacman -Syu --noconfirm archlinux-keyring
+pacman -S --needed --noconfirm "${BASE_PKGS[@]}"
+
+# 2. Criação do Usuário (Idempotente)
+if id -u "${user}" >/dev/null 2>&1; then
+  echo "User '${user}' already exists. Updating groups and shell..."
+  usermod -aG wheel,docker -s /bin/bash "${user}"
+else
+  useradd -m -G wheel,docker -s /bin/bash "${user}"
+fi
+
+echo "${user}:${password}" | chpasswd
+
+# 3. Permissão de Sudo Segura via drop-in (/etc/sudoers.d/)
+echo "%wheel ALL=(ALL:ALL) ALL" > "/etc/sudoers.d/10-wheel"
+chmod 0440 "/etc/sudoers.d/10-wheel"
+
+# 4. Habilitar o Docker para o systemd do WSL
+systemctl enable docker.service
+
+# 5. Configuração de Locales
+sed -i 's/^#\?\s*en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+locale-gen
+echo "LANG=en_US.UTF-8" > /etc/locale.conf
+
+# 6. Configuração do WSL (/etc/wsl.conf)
+cat <<EOF > /etc/wsl.conf
+[boot]
+systemd=true
+
+[user]
+default=${user}
+
+[interop]
+enabled=true
+appendWindowsPath=true
 EOF
-  chmod 0440 "$sudoers_file"
-  visudo -cf "$sudoers_file" >/dev/null
-}
 
-ensure_basic_perms() {
-  local user="$1"
-  local home_dir
-  home_dir="$(getent passwd "$user" | cut -d: -f6)"
-  [[ -n "$home_dir" ]] || die "cannot determine home directory for $user"
-
-  log "Preparing basic permissions in $home_dir"
-  install -d -m 0700 -o "$user" -g "$user" "$home_dir"
-  install -d -m 0700 -o "$user" -g "$user" "$home_dir/.ssh"
-  install -d -m 0755 -o "$user" -g "$user" "$home_dir/.local" "$home_dir/.local/bin" "$home_dir/.config"
-}
-
-main() {
-  [[ ${EUID:-$(id -u)} -eq 0 ]] || die "Run bootstrap.sh as root"
-
-  need_cmd pacman
-  need_cmd useradd
-  need_cmd usermod
-  need_cmd visudo
-  need_cmd install
-  need_cmd getent
-
-  local target_user
-  target_user="$(pick_user "${1:-}")"
-
-  log "Refreshing package database"
-  pacman -Sy --noconfirm
-
-  log "Installing base admin tools"
-  pacman -S --needed --noconfirm sudo shadow util-linux grep coreutils
-
-  ensure_group wheel
-  ensure_user "$target_user"
-  usermod -aG wheel "$target_user"
-  ensure_sudoers "$target_user"
-  ensure_basic_perms "$target_user"
-
-  log "Bootstrap complete"
-  cat <<EOF
-
-Next step:
-  log out of root and run as the normal user:
-    $INSTALL_SH
-
-Optional check:
-    $VERIFY_SH
-
-Current user prepared:
-  $target_user
-EOF
-}
-
-main "$@"
+echo "Setup completed successfully! Please restart WSL (wsl.exe --shutdown)."
