@@ -3,7 +3,7 @@
 #
 # One-liner (fresh image, no curl yet):
 #   pacman-key --init && pacman-key --populate archlinux && \
-#     pacman -Sy --noconfirm archlinux-keyring curl && \
+#     pacman -Syu --noconfirm archlinux-keyring curl && \
 #     curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
 #
 # Already have curl:
@@ -48,7 +48,7 @@ install.sh as that user.
 
 Fresh Arch (still root):
   pacman-key --init && pacman-key --populate archlinux && \
-    pacman -Sy --noconfirm archlinux-keyring curl && \
+    pacman -Syu --noconfirm archlinux-keyring curl && \
     curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
 EOF
 }
@@ -117,12 +117,12 @@ ensure_keyring() {
   log "Initializing pacman keyring"
   pacman-key --init
   pacman-key --populate archlinux
-  if ! pacman -Sy --noconfirm archlinux-keyring; then
+  if ! pacman -Syu --noconfirm archlinux-keyring; then
     warn "pacman-key sync failed; resetting /etc/pacman.d/gnupg"
     rm -rf /etc/pacman.d/gnupg
     pacman-key --init
     pacman-key --populate archlinux
-    pacman -Sy --noconfirm archlinux-keyring
+    pacman -Syu --noconfirm archlinux-keyring
   fi
 }
 

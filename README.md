@@ -38,7 +38,7 @@ dotfiles/
 Official Arch WSL lands you as **root** with a minimal image (often no `curl` / `sudo` / `git`). One command:
 
 ```bash
-pacman-key --init && pacman-key --populate archlinux && pacman -Sy --noconfirm archlinux-keyring curl && curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
+pacman-key --init && pacman-key --populate archlinux && pacman -Syu --noconfirm archlinux-keyring curl && curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
 ```
 
 If `curl` already works:
