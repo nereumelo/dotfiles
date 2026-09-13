@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # install.sh — idempotent Arch WSL bootstrap for ~/me/dotfiles
 # Run as your user (never sudo ./install.sh).
+# Fresh Arch still as root: curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
