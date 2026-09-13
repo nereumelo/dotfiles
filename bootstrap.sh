@@ -16,6 +16,10 @@
 # Skip the user-level installer: DOTFILES_SKIP_INSTALL=1
 set -euo pipefail
 
+# This WSL session still has the default Windows PATH until restart.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export GIT_TERMINAL_PROMPT=0
+
 DOTFILES_REPO="${DOTFILES_REPO:-https://github.com/nereumelo/dotfiles.git}"
 DOTFILES_REF="${DOTFILES_REF:-main}"
 SKIP_INSTALL="${DOTFILES_SKIP_INSTALL:-0}"
@@ -145,6 +149,26 @@ cleanup_nopasswd() {
   rm -f "$NOPASSWD_FILE"
 }
 
+# runuser does not set HOME/USER unless --login; inherit would keep root's env
+# and Windows-shadowed PATH from the still-running first WSL session.
+as_user() {
+  local owner=$1
+  shift
+  local home
+  command -v runuser >/dev/null 2>&1 || die "missing runuser (util-linux)"
+  home="$(getent passwd "$owner" | cut -d: -f6)"
+  [[ -n "$home" ]] || die "cannot determine home for $owner"
+  runuser -u "$owner" -- env \
+    HOME="$home" \
+    USER="$owner" \
+    LOGNAME="$owner" \
+    SHELL=/bin/bash \
+    GIT_TERMINAL_PROMPT=0 \
+    LANG="${LANG:-en_US.UTF-8}" \
+    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    "$@"
+}
+
 sync_repo() {
   local dest=$1 owner=$2 local_repo=${3:-}
   local parent src_real dest_real grp
@@ -169,8 +193,8 @@ sync_repo() {
 
   if [[ -d "$dest/.git" ]]; then
     log "Updating $dest ($DOTFILES_REF)"
-    runuser -u "$owner" -- git -C "$dest" fetch --depth=1 origin "$DOTFILES_REF"
-    runuser -u "$owner" -- git -C "$dest" checkout -B "$DOTFILES_REF" FETCH_HEAD
+    as_user "$owner" git -C "$dest" fetch --depth=1 origin "$DOTFILES_REF"
+    as_user "$owner" git -C "$dest" checkout -B "$DOTFILES_REF" FETCH_HEAD
     return
   fi
 
@@ -179,7 +203,7 @@ sync_repo() {
   fi
 
   log "Cloning $DOTFILES_REPO ($DOTFILES_REF) → $dest"
-  runuser -u "$owner" -- git clone --depth=1 --branch "$DOTFILES_REF" "$DOTFILES_REPO" "$dest"
+  as_user "$owner" git clone --depth=1 --branch "$DOTFILES_REF" "$DOTFILES_REPO" "$dest"
 }
 
 write_wsl_conf() {
@@ -268,7 +292,7 @@ main() {
     write_sudoers "$NOPASSWD_FILE" "${user} ALL=(ALL:ALL) NOPASSWD: ALL"
     trap cleanup_nopasswd EXIT
     log "Running install.sh as ${user}"
-    runuser -u "$user" -- env \
+    as_user "$user" env \
       SKIP_DOCKER="${SKIP_DOCKER:-0}" \
       SKIP_LAZYDOCKER="${SKIP_LAZYDOCKER:-0}" \
       bash "$dest/install.sh"

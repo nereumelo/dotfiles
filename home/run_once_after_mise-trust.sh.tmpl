@@ -8,4 +8,4 @@ if ! command -v mise >/dev/null 2>&1; then
 fi
 
 mise trust "$HOME/.config/mise/config.toml" 2>/dev/null || true
-mise install
+mise install || echo "mise install failed (non-fatal; retry later with: mise install)"

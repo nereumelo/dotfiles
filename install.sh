@@ -12,6 +12,10 @@ BACKUP_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/dotfiles-backup"
 SKIP_DOCKER="${SKIP_DOCKER:-0}"
 SKIP_LAZYDOCKER="${SKIP_LAZYDOCKER:-0}"
 
+# Linux binaries before WSL's default Windows PATH (git.exe, find.exe, sort.exe).
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:$HOME/.local/bin${PATH:+:$PATH}"
+export GIT_TERMINAL_PROMPT=0
+
 log()  { printf '==> %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -20,6 +24,8 @@ need_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing required command: $
 
 # --- Preflight ---
 [[ ${EUID:-$(id -u)} -eq 0 ]] && die "Do not run as root. Use: ./install.sh (sudo is invoked per-command)."
+SELF="$(id -un)"
+[[ -n "${HOME:-}" && "$HOME" != /root && -w "$HOME" ]] || die "HOME must be a writable user directory (got '${HOME:-unset}'). Do not run via sudo."
 
 if [[ -r /etc/os-release ]]; then
   # shellcheck disable=SC1091
@@ -62,10 +68,10 @@ if ! command -v paru >/dev/null 2>&1; then
   if command -v yay >/dev/null 2>&1; then
     warn "paru missing; yay present — installing paru-bin via makepkg"
   fi
-  bootstrap_paru
-  need_cmd paru
-else
-  log "paru already present"
+  bootstrap_paru || warn "paru-bin bootstrap failed"
+fi
+if ! command -v paru >/dev/null 2>&1; then
+  warn "paru missing; skipping AUR (ble.sh fallback still runs)"
 fi
 
 # --- Official packages ---
@@ -94,18 +100,23 @@ fi
 # --- AUR ---
 log "Installing AUR packages (paru --sudoloop)"
 mapfile -t AUR_PKGS < <(grep -vE '^\s*(#|$)' "$AUR_LIST" | sed 's/#.*//' | xargs -n1)
-if ((${#AUR_PKGS[@]})); then
-  paru -S --needed --sudoloop --noconfirm "${AUR_PKGS[@]}"
+if command -v paru >/dev/null 2>&1 && ((${#AUR_PKGS[@]})); then
+  paru -S --needed --sudoloop --noconfirm "${AUR_PKGS[@]}" || warn "AUR install failed; continuing with fallbacks"
+elif ((${#AUR_PKGS[@]})); then
+  warn "skipping AUR packages: ${AUR_PKGS[*]}"
 fi
 
-# ble.sh fallback if AUR path missing
-if [[ ! -f /usr/share/blesh/ble.sh ]]; then
+# ble.sh fallback if AUR path missing (do not clone into the install prefix)
+if [[ ! -f /usr/share/blesh/ble.sh && ! -f "$HOME/.local/share/blesh/ble.sh" ]]; then
   warn "blesh package did not provide /usr/share/blesh/ble.sh — cloning fallback"
-  mkdir -p "$HOME/.local/share"
-  if [[ ! -d "$HOME/.local/share/blesh" ]]; then
-    git clone --recursive --depth=1 https://github.com/akinomyoga/ble.sh.git "$HOME/.local/share/blesh"
-    make -C "$HOME/.local/share/blesh" install PREFIX="$HOME/.local"
+  blesh_src="$(mktemp -d)"
+  if git clone --recursive --depth=1 https://github.com/akinomyoga/ble.sh.git "$blesh_src/blesh" \
+    && make -C "$blesh_src/blesh" install PREFIX="$HOME/.local"; then
+    log "ble.sh installed to $HOME/.local/share/blesh"
+  else
+    warn "ble.sh fallback failed"
   fi
+  rm -rf "$blesh_src"
 fi
 
 # --- Docker ---
@@ -117,14 +128,26 @@ if [[ "$SKIP_DOCKER" != "1" ]]; then
   else
     sudo groupadd docker
   fi
-  if id -nG "$USER" | tr ' ' '\n' | grep -qx docker; then
+  if id -nG "$SELF" | tr ' ' '\n' | grep -qx docker; then
     log "User already in docker group"
   else
-    sudo usermod -aG docker "$USER"
+    sudo usermod -aG docker "$SELF"
     DOCKER_GROUP_ADDED=1
-    log "Added $USER to docker group (re-login required)"
+    log "Added $SELF to docker group (re-login required)"
   fi
-  sudo systemctl enable --now docker.service || warn "Could not enable docker.service (systemd?)"
+  if sudo systemctl enable docker.service 2>/dev/null; then
+    sudo systemctl start docker.service 2>/dev/null || warn "docker.service not started (wsl --shutdown so systemd can run)"
+  else
+    docker_unit=/usr/lib/systemd/system/docker.service
+    docker_wants=/etc/systemd/system/multi-user.target.wants
+    if [[ -f "$docker_unit" ]]; then
+      sudo mkdir -p "$docker_wants"
+      sudo ln -sf "$docker_unit" "$docker_wants/docker.service"
+      warn "systemd not active yet; docker enabled for next WSL boot"
+    else
+      warn "Could not enable docker.service (systemd / unit missing)"
+    fi
+  fi
 fi
 
 # --- External binaries (official scripts; skip if present) ---
@@ -143,7 +166,7 @@ install_cursor_cli() {
     return
   fi
   log "Installing Cursor CLI (official script)"
-  curl https://cursor.com/install -fsS | bash
+  curl -fsSL https://cursor.com/install | bash
 }
 
 install_claude() {
@@ -155,9 +178,9 @@ install_claude() {
   curl -fsSL https://claude.ai/install.sh | bash
 }
 
-install_herdr
-install_cursor_cli
-install_claude
+install_herdr || warn "herdr install failed (non-fatal)"
+install_cursor_cli || warn "Cursor CLI install failed (non-fatal)"
+install_claude || warn "Claude Code install failed (non-fatal)"
 
 if command -v opencode2 >/dev/null 2>&1 || command -v opencode-beta >/dev/null 2>&1; then
   log "OpenCode present — leaving alone (not installing extra/opencode)"
@@ -261,10 +284,10 @@ fi
 mkdir -p "$HOME/work" "$HOME/.local/bin"
 export PATH="$HOME/.local/bin:$PATH"
 
-CURRENT_SHELL="$(getent passwd "$USER" | cut -d: -f7 || true)"
+CURRENT_SHELL="$(getent passwd "$SELF" | cut -d: -f7 || true)"
 if [[ "$CURRENT_SHELL" != "/bin/bash" ]]; then
   log "Setting login shell to /bin/bash (current: $CURRENT_SHELL)"
-  sudo chsh -s /bin/bash "$USER" || warn "chsh failed"
+  sudo chsh -s /bin/bash "$SELF" || warn "chsh failed"
 else
   log "Login shell already bash"
 fi
