@@ -15,7 +15,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 echo "== Commands =="
 for c in \
   bash chezmoi mise starship nvim zoxide fzf eza atuin bat glow fd rg btm sd jq yq \
-  direnv docker herdr git ssh
+  direnv docker git ssh
 do
   if have "$c"; then ok "$c → $(command -v "$c")"
   else bad "missing: $c"
@@ -24,6 +24,7 @@ done
 
 echo
 echo "== Optional agents =="
+if have herdr; then ok "herdr present"; else soft "herdr not on PATH"; fi
 if have agent || have cursor-agent; then ok "Cursor CLI present"; else soft "Cursor CLI (agent) not on PATH"; fi
 if have claude; then ok "Claude Code present"; else soft "claude not on PATH"; fi
 if have opencode2 || have opencode-beta; then ok "OpenCode present"; else soft "opencode2/opencode-beta not on PATH"; fi

@@ -8,7 +8,8 @@ Chezmoi-managed devops environment for **Arch in WSL**. Local git repo only for 
 
 ```
 dotfiles/
-├── install.sh / verify.sh     # package + machine bootstrap only
+├── bootstrap.sh               # root first-boot (curl | bash)
+├── install.sh / verify.sh     # package + machine bootstrap as your user
 ├── packages/pacman.txt|aur.txt
 ├── config/wsl.conf.example
 └── home/                      # chezmoi sourceDir → applied into ~
@@ -32,23 +33,49 @@ dotfiles/
 
 `install.sh` owns packages. Chezmoi never installs packages.
 
-## Day 0 — install
+## Day 0 — fresh Arch, still root
 
-1. Repo at `~/me/dotfiles` (this tree).
-2. Run **as your user** (not root):
+Official Arch WSL lands you as **root** with a minimal image (often no `curl` / `sudo` / `git`). One command:
 
-   ```bash
-   ./install.sh
-   ```
+```bash
+pacman-key --init && pacman-key --populate archlinux && pacman -Syu --noconfirm archlinux-keyring curl && curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
+```
 
-   Sudo is prompted for pacman / systemctl / usermod / chsh only.
-3. Unlock **Arch** Bitwarden → enable SSH agent → import keys → fill `~/.ssh/config.local` for VPS (checklist below).
-4. `./verify.sh`
-5. Open a **new login shell** (bash + docker group).
-6. Optional: apply notes from `config/wsl.conf.example` (`appendWindowsPath=false`), then `wsl --shutdown` from Windows.
-7. Per repo: add `.envrc` + `direnv allow` when needed; projects may also use `mise.toml`.
+If `curl` already works:
 
-Env flags: `SKIP_DOCKER=1`, `SKIP_LAZYDOCKER=1`.
+```bash
+curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
+```
+
+Non-interactive:
+
+```bash
+WSL_USER=yourname WSL_PASSWORD='…' curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
+```
+
+`bootstrap.sh` prompts for a username and password, then:
+
+1. Repairs the pacman keyring and installs `sudo` + `git`
+2. Creates the user (`wheel`, bash), sudoers, `en_US.UTF-8`, and `/etc/wsl.conf` (systemd, that user as default, `appendWindowsPath=false`)
+3. Clones this repo to `~/me/dotfiles` (or copies the local tree if you ran `bootstrap.sh` from a checkout)
+4. Runs `./install.sh` as that user (packages, paru, chezmoi, tools)
+
+When it finishes, from **Windows**: `wsl --shutdown`, then reopen the distro — you should land as the new user.
+
+Already the target user with the repo cloned? Skip bootstrap:
+
+```bash
+./install.sh
+```
+
+Sudo is prompted for pacman / systemctl / usermod / chsh only. Env flags: `SKIP_DOCKER=1`, `SKIP_LAZYDOCKER=1`. Root-only machine setup: `DOTFILES_SKIP_INSTALL=1`.
+
+Then:
+
+1. Unlock **Arch** Bitwarden → enable SSH agent → import keys → fill `~/.ssh/config.local` for VPS (checklist below).
+2. `./verify.sh`
+3. Open a **new login shell** (bash + docker group).
+4. Per repo: add `.envrc` + `direnv allow` when needed; projects may also use `mise.toml`.
 
 ## Day N — edit dots
 
@@ -64,9 +91,11 @@ bashrc **sources** aliases from `~/.config/bash/` — it does not embed them. Us
 
 ## Privileges
 
+Day 0 is the exception: `curl …/bootstrap.sh | bash` as **root**.
+
 Never: `sudo ./install.sh`, `sudo chezmoi`, `sudo paru`, `sudo mise`.
 
-Sudo only for system pacman, system units, usermod, chsh.
+Sudo only for system pacman, system units, usermod, chsh. Bootstrap grants passwordless sudo only while `install.sh` runs, then restores password `wheel` sudo.
 
 ## Git / SSH / signing
 
@@ -100,4 +129,4 @@ Default **Tokyo Night**. `theme` lists keys; `theme <name>` updates `.chezmoidat
 
 ## Out of scope
 
-No Windows host automation · no fish · no LazyVim · rootful Docker without `daemon.json` · atuin cloud sync off · herdr/Cursor/Claude versions not pinned (upstream scripts) · no silent `/etc/wsl.conf` rewrite
+No Windows host automation · no fish · no LazyVim · rootful Docker without `daemon.json` · atuin cloud sync off · herdr/Cursor/Claude versions not pinned (upstream scripts) · `install.sh` does not rewrite `/etc/wsl.conf` (bootstrap does, Day 0 only)
