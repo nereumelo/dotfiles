@@ -183,10 +183,10 @@ install_herdr || warn "herdr install failed (non-fatal)"
 install_cursor_cli || warn "Cursor CLI install failed (non-fatal)"
 install_claude || warn "Claude Code install failed (non-fatal)"
 
-if command -v opencode2 >/dev/null 2>&1 || command -v opencode-beta >/dev/null 2>&1; then
-  log "OpenCode present — leaving alone (not installing extra/opencode)"
+if command -v opencode >/dev/null 2>&1; then
+  log "opencode present: $(command -v opencode)"
 else
-  warn "opencode2/opencode-beta not found; install manually if desired"
+  warn "opencode missing after pacman (check packages/pacman.txt)"
 fi
 
 # --- SSH prep ---

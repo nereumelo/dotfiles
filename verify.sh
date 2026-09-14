@@ -27,7 +27,7 @@ echo "== Optional agents =="
 if have herdr; then ok "herdr present"; else soft "herdr not on PATH"; fi
 if have agent || have cursor-agent; then ok "Cursor CLI present"; else soft "Cursor CLI (agent) not on PATH"; fi
 if have claude; then ok "Claude Code present"; else soft "claude not on PATH"; fi
-if have opencode2 || have opencode-beta; then ok "OpenCode present"; else soft "opencode2/opencode-beta not on PATH"; fi
+if have opencode; then ok "opencode present"; else soft "opencode not on PATH"; fi
 if [[ -f /usr/share/blesh/ble.sh ]] || [[ -f "$HOME/.local/share/blesh/ble.sh" ]]; then ok "ble.sh present"; else soft "ble.sh missing"; fi
 
 echo
