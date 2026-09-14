@@ -56,7 +56,7 @@ powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 1. Installs/ensures WSL2
 2. Installs the official Arch WSL distro **named `arch`** (`wsl -l` shows `arch`, not `archlinux`). Reuses it if it already exists
 3. Installs **Windows** WezTerm (`winget install wez.wezterm`) and JetBrainsMono Nerd Font
-4. Writes `%USERPROFILE%\.config\wezterm\wezterm.lua` with `default_domain = "WSL:arch"` (Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, opacity `0.8`, new windows in `~` running herdr)
+4. Writes `%USERPROFILE%\.config\wezterm\wezterm.lua` with `default_domain = "WSL:arch"` (Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, opacity `0.97`, `102×26`, new windows in `~` running herdr)
 5. Opens distro `arch` as root and runs `bootstrap.sh` (same in-distro path as below)
 
 Non-interactive Linux user creation: set `WSL_USER` / `WSL_PASSWORD` in that PowerShell session before running the script.
@@ -254,7 +254,7 @@ WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFI
 - `default_domain = "WSL:arch"` (WezTerm names WSL domains `WSL:` + `wsl -l` name)
 - `wsl_domains.default_cwd = "~"` so new windows/tabs open in the Linux home, not `C:\Users\...`
 - `wsl_domains.default_prog` starts **herdr** (`bash -lc` so `~/.local/bin` is on PATH). If herdr is missing, login bash. **Ctrl+Shift+L** launcher has a Bash entry for a normal shell
-- Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, `window_background_opacity = 0.8`
+- Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, `window_background_opacity = 0.97`, `initial_cols = 102`, `initial_rows = 26`
 - Clipboard: select copies; **Ctrl+C** copies when there is a selection (otherwise interrupt); **Ctrl+V** pastes
 - Links: click or **Ctrl+click** opens the Windows default browser (`OpenLinkAtMouseCursor`). Copy-on-select left-click had replaced WezTerm's default, so Ctrl+click did nothing until this binding was restored
 
