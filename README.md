@@ -32,6 +32,7 @@ dotfiles/
 | `private_dot_config/nvim/` | `~/.config/nvim/` |
 | `private_dot_ssh/config.tmpl` | `~/.ssh/config` (`Include config.local` only) |
 | `dot_local/bin/executable_theme` | `~/.local/bin/theme` |
+| `dot_local/bin/executable_windows-open` | `~/.local/bin/windows-open` (`xdg-open` shim too) |
 
 `install.sh` owns packages. Chezmoi never installs packages. WezTerm is not an Arch package.
 
@@ -252,8 +253,11 @@ WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFI
 - `wsl_domains.default_cwd = "~"` so new windows/tabs open a Linux shell in the Linux home, not `C:\Users\...`
 - Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`
 - Clipboard: select copies; **Ctrl+C** copies when there is a selection (otherwise interrupt); **Ctrl+V** pastes
+- Links: click or **Ctrl+click** opens the Windows default browser (`OpenLinkAtMouseCursor`). Copy-on-select left-click had replaced WezTerm's default, so Ctrl+click did nothing until this binding was restored
 
-`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling clipboard keybinds, copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
+CLI tools (`claude`, `gh`, `xdg-open`) cannot see `cmd.exe` because `appendWindowsPath=false`. `~/.local/bin/windows-open` (and an `xdg-open` shim) call Windows PowerShell `Start-Process`. `BROWSER` / `GH_BROWSER` point at that script after a new shell (`chezmoi apply`).
+
+`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling clipboard or hyperlink keybinds, copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
 
 Do not install or launch Linux/WSLg `wezterm`.
 

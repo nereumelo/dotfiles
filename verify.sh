@@ -51,7 +51,9 @@ for f in \
   "$HOME/.config/herdr/config.toml" \
   "$HOME/.config/mise/config.toml" \
   "$HOME/.config/nvim/init.lua" \
-  "$HOME/.local/bin/theme"
+  "$HOME/.local/bin/theme" \
+  "$HOME/.local/bin/windows-open" \
+  "$HOME/.local/bin/xdg-open"
 do
   if [[ -e "$f" ]]; then ok "$f"; else soft "missing: $f"; fi
 done
@@ -92,6 +94,20 @@ else
 fi
 if [[ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
   soft "No DISPLAY/WAYLAND_DISPLAY — Bitwarden GUI/agent may need WSLg"
+fi
+
+echo
+echo "== Windows browser (WSL) =="
+if [[ -x "$HOME/.local/bin/windows-open" ]]; then
+  ok "windows-open → $HOME/.local/bin/windows-open"
+else
+  soft "windows-open missing (chezmoi apply?)"
+fi
+if [[ -x /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe ]] \
+  || [[ -x /mnt/c/Windows/System32/cmd.exe ]]; then
+  ok "Windows interop (powershell/cmd under /mnt/c/Windows)"
+else
+  soft "no powershell.exe/cmd.exe under /mnt/c/Windows — WSL interop off?"
 fi
 
 echo
