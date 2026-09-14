@@ -5,6 +5,150 @@ mkcd() {
   mkdir -p -- "$1" && cd -- "$1" || return
 }
 
+# Windows binaries are not on PATH (wsl.conf appendWindowsPath=false).
+_windows_exe() {
+  local p
+  for p in "$@"; do
+    if [[ -x "$p" ]]; then
+      printf '%s\n' "$p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Map file(1) --mime-encoding labels to iconv -f names.
+_copy_iconv_from() {
+  case "$1" in
+    utf-8|us-ascii|ascii) printf '%s\n' UTF-8 ;;
+    utf-16le) printf '%s\n' UTF-16LE ;;
+    utf-16be) printf '%s\n' UTF-16BE ;;
+    utf-16) printf '%s\n' UTF-16 ;;
+    iso-8859-1) printf '%s\n' ISO-8859-1 ;;
+    iso-8859-15) printf '%s\n' ISO-8859-15 ;;
+    windows-1252|cp1252) printf '%s\n' WINDOWS-1252 ;;
+    unknown-8bit|binary|'') printf '%s\n' UTF-8 ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+
+# Encode bytes as UTF-16LE with BOM (what clip.exe treats as Unicode).
+_copy_to_clip() {
+  local clip="$1" from="$2" src="$3" out="$4"
+  if [[ "$from" == UTF-16LE ]]; then
+    command cat -- "$src" >"$out" || return
+  else
+    {
+      printf '\xff\xfe'
+      iconv -f "$from" -t UTF-16LE -- "$src"
+    } >"$out" || return
+  fi
+  "$clip" <"$out"
+}
+
+# Windows clipboard. Detects the source encoding so UTF-8 (and others)
+# are not reinterpreted as the OEM code page.
+#   copy [file]
+#   <cmd> | copy
+copy() {
+  local clip tmp out enc from
+  if [[ $# -gt 1 ]]; then
+    printf 'usage: copy [file]\n       <cmd> | copy\n' >&2
+    return 2
+  fi
+  if [[ $# -eq 1 ]]; then
+    if [[ ! -f "$1" ]]; then
+      printf 'copy: not a regular file: %s\n' "$1" >&2
+      return 1
+    fi
+  elif [[ -t 0 ]]; then
+    printf 'usage: copy [file]\n       <cmd> | copy\n' >&2
+    return 2
+  fi
+
+  clip="$(_windows_exe \
+    /mnt/c/Windows/System32/clip.exe \
+    /mnt/c/Windows/Sysnative/clip.exe)" || {
+    printf 'copy: clip.exe not found under /mnt/c/Windows (WSL interop?)\n' >&2
+    return 1
+  }
+
+  tmp="$(mktemp)" || return
+  out="$(mktemp)" || { rm -f "$tmp"; return 1; }
+
+  if [[ $# -eq 1 ]]; then
+    if ! command cat -- "$1" >"$tmp"; then
+      rm -f "$tmp" "$out"
+      return 1
+    fi
+  elif ! command cat >"$tmp"; then
+    rm -f "$tmp" "$out"
+    return 1
+  fi
+
+  enc="$(file -b --mime-encoding "$tmp" 2>/dev/null || printf '%s\n' utf-8)"
+  enc="${enc,,}"
+  from="$(_copy_iconv_from "$enc")"
+
+  if _copy_to_clip "$clip" "$from" "$tmp" "$out"; then
+    rm -f "$tmp" "$out"
+    return 0
+  fi
+  if [[ "$from" != UTF-8 ]] && _copy_to_clip "$clip" UTF-8 "$tmp" "$out"; then
+    rm -f "$tmp" "$out"
+    return 0
+  fi
+  # Last resort: 1:1 byte → U+00xx so the original octets survive.
+  if [[ "$from" != ISO-8859-1 ]] && _copy_to_clip "$clip" ISO-8859-1 "$tmp" "$out"; then
+    rm -f "$tmp" "$out"
+    return 0
+  fi
+
+  printf 'copy: could not encode for clip.exe (detected %s)\n' "$enc" >&2
+  rm -f "$tmp" "$out"
+  return 1
+}
+
+# Open a path in Windows Explorer. No arg → current directory.
+#   open
+#   open .
+#   open ~/me/dotfiles
+open() {
+  local explorer target win
+  if [[ $# -gt 1 ]]; then
+    printf 'usage: open [path]\n' >&2
+    return 2
+  fi
+
+  target="${1:-.}"
+  if [[ ! -e "$target" ]]; then
+    printf 'open: no such path: %s\n' "$target" >&2
+    return 1
+  fi
+
+  explorer="$(_windows_exe \
+    /mnt/c/Windows/explorer.exe \
+    /mnt/c/Windows/System32/explorer.exe \
+    /mnt/c/Windows/Sysnative/explorer.exe)" || {
+    printf 'open: explorer.exe not found under /mnt/c/Windows (WSL interop?)\n' >&2
+    return 1
+  }
+  if ! command -v wslpath >/dev/null 2>&1; then
+    printf 'open: wslpath missing\n' >&2
+    return 1
+  fi
+
+  target="$(realpath -e -- "$target")" || return
+  win="$(wslpath -w "$target")" || return
+
+  # explorer.exe often exits non-zero even when the window opens.
+  if [[ -d "$target" ]]; then
+    "$explorer" "$win" >/dev/null 2>&1 || true
+  else
+    "$explorer" /select,"$win" >/dev/null 2>&1 || true
+  fi
+}
+
 # Host blocks live in ~/.ssh/config.local (not git):
 #   HostName, User, IdentityAgent, IdentitiesOnly, IdentityFile
 # ssh-host-local <host> <hostname> <user>
