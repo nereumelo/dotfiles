@@ -154,10 +154,12 @@ ssh-add -l               # empty until SSH-key items exist and the vault is unlo
 
 ### Hosts in `config.local`
 
-`install.sh` seeds `Host github.com` (`HostName github.com`, `User git`). Any other alias — including `vps` — needs `ssh-host-local` first. `IdentityAgent` and `IdentitiesOnly` are not function arguments.
+One SSH alias per `Host` block. `<host>` is the alias you type (`ssh vps`, `git@github.com-acme`); `<hostname>` is the real name (`github.com`, `ssh.github.com`, an IP). Re-running the same command is a no-op: `IdentityFile`, `Port`, and other extra keys stay put.
+
+`install.sh` seeds `Host github.com` **only if it is missing**. If that block already has `HostName ssh.github.com` (or a GitHub Enterprise name), install leaves it. `IdentityAgent` and `IdentitiesOnly` are not function arguments.
 
 ```bash
-ssh-host-local github.com github.com git          # already done by install.sh
+ssh-host-local github.com github.com git          # skipped by install.sh if Host github.com exists
 ssh-host-local vps YOUR_IP_OR_DNS YOUR_REMOTE_USER
 ssh-host-local xpto example.com alice
 ```
@@ -170,7 +172,33 @@ ssh-pub vps vps
 ssh-pub xpto xpto                   # errors if Host xpto is missing
 ```
 
-`ssh-pub` runs `chezmoi apply` when the key is `home-personal` or `work` (git signing templates). Other keys only need the `.pub` and `config.local`.
+`ssh-pub` is idempotent when the `.pub` and `IdentityFile` already match. It runs `chezmoi apply` when it actually writes `home-personal` or `work` (git signing templates).
+
+### Extra GitHub accounts / orgs
+
+`github.com` and `github.com-acme` are different Host aliases. Both can use `HostName github.com` with different keys. Remotes must use the alias, not `git@github.com`, or SSH would pick the `Host github.com` key.
+
+```bash
+ssh-host-local github.com github.com git
+ssh-pub github.com home-personal
+
+ssh-host-local github.com-acme github.com git
+ssh-pub github.com-acme acme
+
+ssh-host-local github.com-work github.com git
+ssh-pub github.com-work work
+
+git clone git@github.com-acme:acme/repo.git
+# git remote set-url origin git@github.com-acme:acme/repo.git
+```
+
+GitHub over 443 / Enterprise — change only `<hostname>` (and keep `Port` if you add it; `ssh-host-local` will not drop it):
+
+```bash
+ssh-host-local github.com ssh.github.com git
+ssh-host-local ghe github.mycompany.com git
+ssh-pub ghe work
+```
 
 ### GitHub (`ssh git@github.com` + commit signing)
 
@@ -214,9 +242,7 @@ Install the **same** public line on the server (`~/.ssh/authorized_keys` for tha
 ssh vps
 ```
 
-Bitwarden must be unlocked; **Allow** if the agent prompts. `install.sh` may copy a legacy `vps_srv1938886.pub` → `vps.pub` when present, and will refresh `Host vps` if HostName/User are already in `config.local` or the old `~/.ssh/config`. Delete leftover **private** key files from `~/.ssh/` after import.
-
-Work GitHub (`Host github.com-work`): `ssh-host-local github.com-work github.com git` then `ssh-pub github.com-work work`.
+Bitwarden must be unlocked; **Allow** if the agent prompts. `install.sh` may copy a legacy `vps_srv1938886.pub` → `vps.pub` when present. It will not overwrite an existing `Host vps` HostName/User. Delete leftover **private** key files from `~/.ssh/` after import.
 
 ## WezTerm (Windows → WSL:arch)
 

@@ -212,15 +212,16 @@ fi
 
 _ssh_ensure_config_local
 
-# github.com always lives in config.local (not the chezmoi tmpl).
-ssh-host-local github.com github.com git >/dev/null
+# Seed Host github.com only if missing. Existing HostName/User stay
+# (ssh.github.com, GitHub Enterprise, already-customized aliases).
+_ssh_seed_host github.com github.com git
 # OpenSSH expands ~ in IdentityFile; do not use $HOME here.
 # shellcheck disable=SC2088
 if [[ -f "$HOME/.ssh/home-personal.pub" ]]; then
-  _ssh_set_identity_file github.com "~/.ssh/home-personal.pub"
+  _ssh_set_identity_file_if_missing github.com "~/.ssh/home-personal.pub"
 fi
 
-# Refresh or seed Host vps from config.local / leftover ~/.ssh/config HostName+User.
+# Create Host vps from leftover config if missing; never clobber an existing HostName.
 vps_hn="$(_ssh_local_field vps HostName || true)"
 vps_user="$(_ssh_local_field vps User || true)"
 if [[ -z "$vps_hn" && -f "$HOME/.ssh/config" ]]; then
@@ -229,17 +230,20 @@ fi
 if [[ -z "$vps_user" && -f "$HOME/.ssh/config" ]]; then
   vps_user="$(_ssh_local_field vps User "$HOME/.ssh/config" || true)"
 fi
-if [[ -n "$vps_hn" && -n "$vps_user" ]]; then
+if _ssh_host_in_local vps; then
+  _ssh_ensure_host_agent vps
+  log "Host vps already in ~/.ssh/config.local (HostName $(_ssh_local_field vps HostName || true))"
+elif [[ -n "$vps_hn" && -n "$vps_user" ]]; then
   ssh-host-local vps "$vps_hn" "$vps_user" >/dev/null
   log "Host vps in ~/.ssh/config.local (HostName $vps_hn User $vps_user)"
 fi
-if [[ -f "$HOME/.ssh/vps.pub" ]] && _ssh_host_in_local vps; then
+if [[ -f "$HOME/.ssh/vps.pub" ]]; then
   # shellcheck disable=SC2088
-  _ssh_set_identity_file vps "~/.ssh/vps.pub"
+  _ssh_set_identity_file_if_missing vps "~/.ssh/vps.pub"
 fi
-if [[ -f "$HOME/.ssh/work.pub" ]] && _ssh_host_in_local github.com-work; then
+if [[ -f "$HOME/.ssh/work.pub" ]]; then
   # shellcheck disable=SC2088
-  _ssh_set_identity_file github.com-work "~/.ssh/work.pub"
+  _ssh_set_identity_file_if_missing github.com-work "~/.ssh/work.pub"
 fi
 
 # --- Backup ---

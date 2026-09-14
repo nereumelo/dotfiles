@@ -9,6 +9,8 @@ mkcd() {
 #   HostName, User, IdentityAgent, IdentitiesOnly, IdentityFile
 # ssh-host-local <host> <hostname> <user>
 # ssh-pub <host> <key>
+# One Host alias per block. github.com and github.com-acme are distinct
+# (same HostName github.com, different keys). Re-runs are idempotent.
 
 # Tilde is for OpenSSH config (IdentityAgent ~/.bitwarden-ssh-agent.sock), not bash expansion.
 # shellcheck disable=SC2088
@@ -78,8 +80,30 @@ _ssh_local_field() {
   ' "$f"
 }
 
-# MODE=setup  host hostname user
-# MODE=identity host identity_file
+_ssh_expand_identity_path() {
+  local p="$1"
+  p="${p#\"}"
+  p="${p%\"}"
+  p="${p#\'}"
+  p="${p%\'}"
+  if [[ "$p" == "~/"* ]]; then
+    printf '%s\n' "${HOME}/${p#~/}"
+  else
+    printf '%s\n' "$p"
+  fi
+}
+
+_ssh_identity_points_to() {
+  local host="$1" want="$2"
+  local have
+  have="$(_ssh_local_field "$host" IdentityFile || true)"
+  [[ -n "$have" ]] || return 1
+  [[ "$(_ssh_expand_identity_path "$have")" == "$(_ssh_expand_identity_path "$want")" ]]
+}
+
+# MODE=setup     host hostname user   — set HostName/User + agent defaults; keep IdentityFile
+# MODE=identity  host [identity_file] — keep HostName/User; set IdentityFile if given; fill agent
+# MODE=agent     host                 — keep HostName/User/IdentityFile; fill agent defaults only
 _ssh_rewrite_local_host() {
   local mode="$1" host="$2"
   local hostname="${3:-}" user="${4:-}" identity_file="${5:-}"
@@ -94,10 +118,59 @@ _ssh_rewrite_local_host() {
       sub(/[[:space:]]+$/, "", s)
       return s
     }
+    function parse_host_line(line,    n, i, t) {
+      n = split(line, t, /[[:space:]]+/)
+      n_other = 0
+      delete others
+      matched = 0
+      for (i = 2; i <= n; i++) {
+        if (t[i] == "" || t[i] ~ /^#/) break
+        if (t[i] == host) matched = 1
+        else others[++n_other] = t[i]
+      }
+      leftover_names = ""
+      for (i = 1; i <= n_other; i++) leftover_names = leftover_names (i == 1 ? "" : " ") others[i]
+      return matched
+    }
+    function emit_kv(hn, usr, ag, io, idf,    i) {
+      if (hn != "") print "  HostName " hn
+      if (usr != "") print "  User " usr
+      print "  IdentityAgent " ag
+      print "  IdentitiesOnly " io
+      if (idf != "") print "  IdentityFile " idf
+      for (i = 1; i <= n_extra; i++) print extras[i]
+    }
+    function emit_target(    hn, usr, idf, ag, io) {
+      print "Host " host
+      if (mode == "setup") {
+        hn = hostname
+        usr = user
+        ag = agent
+        io = "yes"
+      } else {
+        hn = vals["HostName"]
+        usr = vals["User"]
+        ag = (vals["IdentityAgent"] != "") ? vals["IdentityAgent"] : agent
+        io = (vals["IdentitiesOnly"] != "") ? vals["IdentitiesOnly"] : "yes"
+      }
+      if (mode == "identity" && identity_file != "") idf = identity_file
+      else idf = vals["IdentityFile"]
+      emit_kv(hn, usr, ag, io, idf)
+    }
+    function emit_leftover(    ag, io) {
+      if (leftover_names == "") return
+      print "Host " leftover_names
+      ag = (vals["IdentityAgent"] != "") ? vals["IdentityAgent"] : agent
+      io = (vals["IdentitiesOnly"] != "") ? vals["IdentitiesOnly"] : "yes"
+      emit_kv(vals["HostName"], vals["User"], ag, io, vals["IdentityFile"])
+    }
     function flush() {
       if (!in_block) return
-      if (current_is_target) {
+      if (skip_discard) {
+        # drop duplicate Host <host>
+      } else if (current_is_target) {
         emit_target()
+        emit_leftover()
         emitted_target = 1
       } else {
         printf "%s", buf
@@ -105,30 +178,11 @@ _ssh_rewrite_local_host() {
       buf = ""
       in_block = 0
       current_is_target = 0
-      host_line = ""
+      skip_discard = 0
+      leftover_names = ""
       delete vals
       delete extras
       n_extra = 0
-    }
-    function emit_target(    hn, usr, idf, ag, io, i) {
-      print host_line
-      hn = (mode == "setup") ? hostname : vals["HostName"]
-      usr = (mode == "setup") ? user : vals["User"]
-      if (mode == "identity" && identity_file != "") idf = identity_file
-      else idf = vals["IdentityFile"]
-      if (hn != "") print "  HostName " hn
-      if (usr != "") print "  User " usr
-      if (mode == "setup") {
-        ag = agent
-        io = "yes"
-      } else {
-        ag = (vals["IdentityAgent"] != "") ? vals["IdentityAgent"] : agent
-        io = (vals["IdentitiesOnly"] != "") ? vals["IdentitiesOnly"] : "yes"
-      }
-      print "  IdentityAgent " ag
-      print "  IdentitiesOnly " io
-      if (idf != "") print "  IdentityFile " idf
-      for (i = 1; i <= n_extra; i++) print extras[i]
     }
     {
       sub(/\r$/, "")
@@ -136,19 +190,28 @@ _ssh_rewrite_local_host() {
     $1 == "Host" || $1 == "Match" {
       flush()
       in_block = 1
-      host_line = $0
       current_is_target = 0
-      if ($1 == "Host") {
-        for (i = 2; i <= NF; i++) {
-          if ($i == host) current_is_target = 1
+      skip_discard = 0
+      leftover_names = ""
+      if ($1 == "Host" && parse_host_line($0)) {
+        if (emitted_target) {
+          if (n_other == 0) {
+            skip_discard = 1
+          } else {
+            buf = "Host " leftover_names ORS
+            leftover_names = ""
+          }
+        } else {
+          current_is_target = 1
         }
+      } else {
+        buf = $0 ORS
       }
-      if (!current_is_target) buf = $0 ORS
       next
     }
+    in_block && skip_discard { next }
     in_block && current_is_target {
-      line = $0
-      raw = trim(line)
+      raw = trim($0)
       if (raw == "" || raw ~ /^#/) next
       key = $1
       rest = trim(substr($0, index($0, $1) + length($1)))
@@ -167,10 +230,10 @@ _ssh_rewrite_local_host() {
     END {
       flush()
       if (mode == "setup" && !emitted_target) {
-        host_line = "Host " host
+        leftover_names = ""
         emit_target()
       }
-      if (mode == "identity" && !emitted_target) {
+      if ((mode == "identity" || mode == "agent") && !emitted_target) {
         exit 1
       }
       exit 0
@@ -178,6 +241,10 @@ _ssh_rewrite_local_host() {
   ' "$f" >"$tmp"; then
     rm -f "$tmp"
     return 1
+  fi
+  if cmp -s "$tmp" "$f"; then
+    rm -f "$tmp"
+    return 0
   fi
   mv "$tmp" "$f"
   chmod 600 "$f"
@@ -187,6 +254,7 @@ ssh-host-local() {
   if [[ $# -ne 3 ]]; then
     printf 'usage: ssh-host-local <host> <hostname> <user>\n' >&2
     printf 'IdentityAgent (%s) and IdentitiesOnly (yes) are always set.\n' "$_SSH_IDENTITY_AGENT" >&2
+    printf 'Re-run is a no-op when HostName/User/agent already match (IdentityFile and extra keys kept).\n' >&2
     return 2
   fi
   local host="$1" hostname="$2" user="$3"
@@ -199,9 +267,37 @@ ssh-host-local() {
     "$host" "$hostname" "$user" "$_SSH_IDENTITY_AGENT"
 }
 
+_ssh_ensure_host_agent() {
+  local host="$1"
+  _ssh_rewrite_local_host agent "$host"
+}
+
 _ssh_set_identity_file() {
   local host="$1" identity_file="$2"
   _ssh_rewrite_local_host identity "$host" "" "" "$identity_file"
+}
+
+_ssh_set_identity_file_if_missing() {
+  local host="$1" identity_file="$2"
+  _ssh_host_in_local "$host" || return 0
+  if _ssh_identity_points_to "$host" "$identity_file"; then
+    return 0
+  fi
+  local have
+  have="$(_ssh_local_field "$host" IdentityFile || true)"
+  [[ -z "$have" ]] || return 0
+  _ssh_set_identity_file "$host" "$identity_file"
+}
+
+# Create Host only if missing. Existing HostName/User (ssh.github.com, GHE, …) are kept.
+_ssh_seed_host() {
+  local host="$1" hostname="$2" user="$3"
+  _ssh_ensure_config_local || return
+  if _ssh_host_in_local "$host"; then
+    _ssh_ensure_host_agent "$host"
+  else
+    ssh-host-local "$host" "$hostname" "$user" >/dev/null
+  fi
 }
 
 ssh-pub() {
@@ -232,7 +328,7 @@ ssh-pub() {
   local old_sock="${SSH_AUTH_SOCK:-}"
   export SSH_AUTH_SOCK="$sock"
 
-  local lines matches exact chosen count dest
+  local lines matches exact chosen count dest want
   if ! lines="$(ssh-add -L 2>/dev/null)"; then
     [[ -n "$old_sock" ]] && export SSH_AUTH_SOCK="$old_sock"
     printf 'ssh-pub: ssh-add -L failed (unlock Bitwarden and Allow the agent prompt)\n' >&2
@@ -262,11 +358,19 @@ ssh-pub() {
   chosen="$matches"
 
   dest="${HOME}/.ssh/${key}.pub"
+  # shellcheck disable=SC2088
+  want="~/.ssh/${key}.pub"
+
+  if [[ -f "$dest" ]] && cmp -s <(printf '%s\n' "$chosen") "$dest" && _ssh_identity_points_to "$host" "$want"; then
+    printf 'ssh-pub: %s already on Host %s\n' "$dest" "$host"
+    return 0
+  fi
+
   printf '%s\n' "$chosen" >"$dest"
   chmod 644 "$dest"
   # OpenSSH expands ~ in IdentityFile; do not use $HOME here.
   # shellcheck disable=SC2088
-  _ssh_set_identity_file "$host" "~/.ssh/${key}.pub" || return
+  _ssh_set_identity_file "$host" "$want" || return
 
   if [[ "$key" == "home-personal" || "$key" == "work" ]] && command -v chezmoi >/dev/null 2>&1; then
     chezmoi apply || printf 'ssh-pub: wrote the key; chezmoi apply failed (git signing templates)\n' >&2
