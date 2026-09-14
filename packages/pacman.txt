@@ -12,9 +12,6 @@ bitwarden
 bash-completion
 direnv
 
-# Agents
-opencode
-
 # Docker (omit set when SKIP_DOCKER=1)
 docker
 docker-compose

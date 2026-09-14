@@ -2,7 +2,7 @@
 
 Chezmoi-managed devops environment for **Arch in WSL**. Local git repo only for now — does **not** replace [github.com/nereumelo/dotfiles](https://github.com/nereumelo/dotfiles).
 
-**Stack:** Bash + ble.sh + starship + mise + direnv · UX CLIs (zoxide, fzf, eza, atuin, bat, glow, fd, ripgrep, bottom, sd, jq, go-yq) · Windows WezTerm → WSL `arch` · Herdr · OpenCode · Cursor CLI · Claude Code · Neovim · Docker · Bitwarden SSH + SSH commit signing · Tokyo Night theme
+**Stack:** Bash + ble.sh + starship + mise + direnv · UX CLIs (zoxide, fzf, eza, atuin, bat, glow, fd, ripgrep, bottom, sd, jq, go-yq) · Windows WezTerm → WSL `arch` · Herdr · OpenCode 2 · Cursor CLI · Claude Code · Neovim · Docker · Bitwarden SSH + SSH commit signing · Tokyo Night theme
 
 ## Repository layout
 
@@ -234,7 +234,7 @@ Default **Tokyo Night**. `theme` lists keys; `theme <name>` updates `.chezmoidat
 
 - mise globals: `node@lts`, `python@latest` (`mise install` after apply)
 - direnv hook after mise; allow `.envrc` per repo
-- Agents: OpenCode (`opencode`, extra/opencode), Herdr, Cursor CLI (`agent`), Claude Code (`claude`)
+- Agents: OpenCode 2 (`opencode2`, AUR `opencode-beta` or https://opencode.ai/v2/install) — not extra/opencode (v1) · Herdr, Cursor CLI (`agent`), Claude Code (`claude`)
 
 ## Out of scope
 

@@ -11,7 +11,7 @@ export VISUAL=nvim
 export GIT_EDITOR=nvim
 
 # User binaries first among user paths
-export PATH="$HOME/.local/bin:${PATH}"
+export PATH="$HOME/.opencode/bin:$HOME/.local/bin:${PATH}"
 
 # ble.sh (attach at end) — AUR path first, then local fallback install
 if [[ -f /usr/share/blesh/ble.sh ]]; then
