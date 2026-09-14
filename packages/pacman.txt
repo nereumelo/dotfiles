@@ -24,6 +24,7 @@ fzf
 eza
 atuin
 bat
+xclip
 glow
 fd
 ripgrep
