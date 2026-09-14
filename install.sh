@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # install.sh — idempotent Arch WSL bootstrap for ~/me/dotfiles
 # Run as your user (never sudo ./install.sh).
-# Fresh Arch still as root: curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
+# Day 0 from Windows: irm https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.ps1 | iex
+# Already root in the distro: curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -292,6 +293,13 @@ else
   log "Login shell already bash"
 fi
 
+# WezTerm is the Windows GUI (WSL:arch). Drop leftover Linux GUI files from older trees.
+rm -f "$HOME/.config/wezterm/wezterm.lua"
+rm -f "$HOME/.local/share/applications/org.wezfurlong.wezterm.desktop"
+if pacman -Q wezterm >/dev/null 2>&1; then
+  warn "Arch wezterm is installed; this setup uses Windows WezTerm. Remove with: sudo pacman -Rns wezterm"
+fi
+
 # --- wsl.conf hint ---
 if [[ -r /etc/wsl.conf ]] && grep -qi 'appendWindowsPath\s*=\s*true' /etc/wsl.conf; then
   warn "appendWindowsPath=true in /etc/wsl.conf can shadow Linux tools with *.exe"
@@ -309,7 +317,7 @@ Next (manual):
   2. Import private keys into Bitwarden SSH; leave only .pub in ~/.ssh/
   3. Confirm ~/.ssh/config.local has VPS HostName/User
   4. Add home-personal.pub as a GitHub/GitLab Signing key
-  5. Open a new login shell (docker group + bashrc)
+  5. Open a new Windows WezTerm window (docker group + bashrc)
   6. Until BW agent is ready, use: git commit --no-gpg-sign
 
 Backup: $BACKUP_DIR

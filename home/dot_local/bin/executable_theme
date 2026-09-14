@@ -68,4 +68,4 @@ if command -v herdr >/dev/null 2>&1; then
   herdr server reload-config >/dev/null 2>&1 || true
 fi
 
-echo "Reload WezTerm / Neovim windows if colors look stale."
+echo "Reload Neovim / Herdr if colors look stale. Windows WezTerm is not managed here."

@@ -2,14 +2,16 @@
 
 Chezmoi-managed devops environment for **Arch in WSL**. Local git repo only for now — does **not** replace [github.com/nereumelo/dotfiles](https://github.com/nereumelo/dotfiles).
 
-**Stack:** Bash + ble.sh + starship + mise + direnv · UX CLIs (zoxide, fzf, eza, atuin, bat, glow, fd, ripgrep, bottom, sd, jq, go-yq) · WezTerm · Herdr · OpenCode2 · Cursor CLI · Claude Code · Neovim · Docker · Bitwarden SSH + SSH commit signing · Tokyo Night theme
+**Stack:** Bash + ble.sh + starship + mise + direnv · UX CLIs (zoxide, fzf, eza, atuin, bat, glow, fd, ripgrep, bottom, sd, jq, go-yq) · Windows WezTerm → WSL `arch` · Herdr · OpenCode2 · Cursor CLI · Claude Code · Neovim · Docker · Bitwarden SSH + SSH commit signing · Tokyo Night theme
 
 ## Repository layout
 
 ```
 dotfiles/
-├── bootstrap.sh               # root first-boot (curl | bash)
-├── install.sh / verify.sh     # package + machine bootstrap as your user
+├── bootstrap.ps1              # Day 0 from Windows (WSL distro arch + WezTerm + Linux bootstrap)
+├── bootstrap.sh               # in-distro root first-boot (user, sudo, packages, chezmoi)
+├── install.sh / verify.sh     # package + machine bootstrap as your Linux user
+├── windows/wezterm.lua        # copied to %USERPROFILE%\.config\wezterm\wezterm.lua
 ├── packages/pacman.txt|aur.txt
 ├── config/wsl.conf.example
 └── home/                      # chezmoi sourceDir → applied into ~
@@ -28,16 +30,40 @@ dotfiles/
 | `private_dot_config/bash/` | `~/.config/bash/` |
 | `private_dot_config/git/config-work.tmpl` | `~/.config/git/config-work` |
 | `private_dot_config/nvim/` | `~/.config/nvim/` |
-| `private_dot_config/wezterm/` | `~/.config/wezterm/` |
 | `private_dot_ssh/config.tmpl` | `~/.ssh/config` |
 | `dot_local/bin/executable_theme` | `~/.local/bin/theme` |
-| `dot_local/share/applications/org.wezfurlong.wezterm.desktop` | `~/.local/share/applications/org.wezfurlong.wezterm.desktop` |
 
-`install.sh` owns packages. Chezmoi never installs packages.
+`install.sh` owns packages. Chezmoi never installs packages. WezTerm is not an Arch package.
 
-## Day 0 — fresh Arch, still root
+## Day 0 — Windows first
 
-Official Arch WSL lands you as **root** with a minimal image (often no `curl` / `sudo` / `git`). One command:
+From **Windows PowerShell or Windows Terminal** (your Windows user, not a Linux shell):
+
+```powershell
+irm https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.ps1 | iex
+```
+
+Or from a checkout:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
+```
+
+`bootstrap.ps1`:
+
+1. Installs/ensures WSL2
+2. Installs the official Arch WSL distro **named `arch`** (`wsl -l` shows `arch`, not `archlinux`). Reuses it if it already exists
+3. Installs **Windows** WezTerm (`winget install wez.wezterm`) and JetBrainsMono Nerd Font
+4. Writes `%USERPROFILE%\.config\wezterm\wezterm.lua` with `default_domain = "WSL:arch"` (Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, new windows in `~`)
+5. Opens distro `arch` as root and runs `bootstrap.sh` (same in-distro path as below)
+
+Non-interactive Linux user creation: set `WSL_USER` / `WSL_PASSWORD` in that PowerShell session before running the script.
+
+When it finishes, open **Windows WezTerm**. You should land in the Linux home directory.
+
+### Already inside the distro as root
+
+Skip Windows if WSL `arch` and WezTerm are already set up:
 
 ```bash
 pacman-key --init && pacman-key --populate archlinux && pacman -Syu --noconfirm archlinux-keyring curl && curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
@@ -60,11 +86,9 @@ WSL_USER=yourname WSL_PASSWORD='…' curl -fsSL https://raw.githubusercontent.co
 1. Repairs the pacman keyring and installs `sudo` + `git`
 2. Creates the user (`wheel`, bash), sudoers, `en_US.UTF-8`, and `/etc/wsl.conf` (systemd, that user as default, `appendWindowsPath=false`)
 3. Clones this repo to `~/me/dotfiles` (or copies the local tree if you ran `bootstrap.sh` from a checkout)
-4. Runs `./install.sh` as that user (packages, paru, chezmoi, tools)
+4. Runs `./install.sh` as that user (packages, paru, chezmoi, tools) — **not** Linux WezTerm
 
-When it finishes, from **Windows**: `wsl --shutdown`, then reopen the distro — you should land as the new user.
-
-Already the target user with the repo cloned? Skip bootstrap:
+Already the target user with the repo cloned? Skip root bootstrap:
 
 ```bash
 ./install.sh
@@ -76,7 +100,7 @@ Then:
 
 1. Unlock **Arch** Bitwarden → enable SSH agent → import keys → fill `~/.ssh/config.local` for VPS (checklist below).
 2. `./verify.sh`
-3. Open a **new login shell** (bash + docker group).
+3. Open a **new WezTerm window** (bash + docker group).
 4. Per repo: add `.envrc` + `direnv allow` when needed; projects may also use `mise.toml`.
 
 ## Day N — edit dots
@@ -93,11 +117,11 @@ bashrc **sources** aliases from `~/.config/bash/` — it does not embed them. Us
 
 ## Privileges
 
-Day 0 is the exception: `curl …/bootstrap.sh | bash` as **root**.
+Day 0: `bootstrap.ps1` as your **Windows** user, then `bootstrap.sh` as **root** inside `arch`.
 
 Never: `sudo ./install.sh`, `sudo chezmoi`, `sudo paru`, `sudo mise`.
 
-Sudo only for system pacman, system units, usermod, chsh. Bootstrap grants passwordless sudo only while `install.sh` runs, then restores password `wheel` sudo.
+Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants passwordless sudo only while `install.sh` runs, then restores password `wheel` sudo.
 
 ## Git / SSH / signing
 
@@ -119,15 +143,21 @@ Sudo only for system pacman, system units, usermod, chsh. Bootstrap grants passw
 
 Bitwarden vault syncs via your account across Windows/Arch clients. Enable the SSH agent in the **Arch** desktop app. Do not bridge Windows `npiperelay` into WSL for this setup.
 
-## WezTerm (WSLg)
+## WezTerm (Windows → WSL:arch)
 
-Arch `wezterm` on WSLg does not use Wayland. `enable_wayland = false` plus `window_decorations = "TITLE | RESIZE"` keep a normal X11/Win32 frame (the Start menu shortcut otherwise stays on Wayland and becomes a borderless panel). `~/.local/share/applications/org.wezfurlong.wezterm.desktop` launches with `WAYLAND_DISPLAY=` and `LIBGL_ALWAYS_SOFTWARE=1` so **Start → WezTerm (arch)** matches a working CLI. `vulkan-icd-loader` and `vulkan-swrast` are in `packages/pacman.txt`. After apply: `wsl --shutdown` once if the old shortcut is cached.
+WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFILE%\.config\wezterm\wezterm.lua`:
 
-Do not set nightly-only keys such as `mux_enable_ssh_agent` on extra/wezterm — unknown `config_builder()` fields abort startup.
+- `default_domain = "WSL:arch"` (WezTerm names WSL domains `WSL:` + `wsl -l` name)
+- `wsl_domains.default_cwd = "~"` so new windows/tabs open a Linux shell in the Linux home, not `C:\Users\...`
+- Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`
+
+`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme.
+
+Do not install or launch Linux/WSLg `wezterm`.
 
 ## Themes
 
-Default **Tokyo Night**. `theme` lists keys; `theme <name>` updates `.chezmoidata.toml` and runs `chezmoi apply` (WezTerm, Starship, Herdr, Neovim). Reload GUI apps if colors look stale.
+Default **Tokyo Night**. `theme` lists keys; `theme <name>` updates `.chezmoidata.toml` and runs `chezmoi apply` (Starship, Herdr, Neovim). Reload those apps if colors look stale.
 
 ## Toolchains
 
@@ -137,4 +167,4 @@ Default **Tokyo Night**. `theme` lists keys; `theme <name>` updates `.chezmoidat
 
 ## Out of scope
 
-No Windows host automation · no fish · no LazyVim · rootful Docker without `daemon.json` · atuin cloud sync off · herdr/Cursor/Claude versions not pinned (upstream scripts) · `install.sh` does not rewrite `/etc/wsl.conf` (bootstrap does, Day 0 only)
+No extra Windows host automation beyond `bootstrap.ps1` (WSL + WezTerm) · no fish · no LazyVim · rootful Docker without `daemon.json` · atuin cloud sync off · herdr/Cursor/Claude versions not pinned (upstream scripts) · `install.sh` does not rewrite `/etc/wsl.conf` (Linux `bootstrap.sh` does, Day 0 only)
