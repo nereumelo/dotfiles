@@ -1,0 +1,5 @@
+{{- $t := index .themes .theme -}}
+{
+  "$schema": "https://opencode.ai/tui.json",
+  "theme": {{ index $t "opencode" | quote }}
+}

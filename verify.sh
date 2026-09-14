@@ -56,6 +56,7 @@ for f in \
   "$HOME/.config/herdr/config.toml" \
   "$HOME/.config/mise/config.toml" \
   "$HOME/.config/nvim/init.lua" \
+  "$HOME/.config/opencode/tui.json" \
   "$HOME/.local/bin/theme" \
   "$HOME/.local/bin/windows-open" \
   "$HOME/.local/bin/xdg-open"

@@ -30,6 +30,7 @@ dotfiles/
 | `private_dot_config/bash/` | `~/.config/bash/` |
 | `private_dot_config/git/config-work.tmpl` | `~/.config/git/config-work` |
 | `private_dot_config/nvim/` | `~/.config/nvim/` |
+| `private_dot_config/opencode/tui.json.tmpl` | `~/.config/opencode/tui.json` |
 | `private_dot_ssh/config.tmpl` | `~/.ssh/config` (`Include config.local` only) |
 | `dot_local/bin/executable_theme` | `~/.local/bin/theme` |
 | `dot_local/bin/executable_windows-open` | `~/.local/bin/windows-open` (`xdg-open` shim too) |
@@ -269,7 +270,7 @@ Do not install or launch Linux/WSLg `wezterm`.
 
 ## Themes
 
-Default **Tokyo Night**. `theme` lists keys; `theme <name>` updates `.chezmoidata.toml` and runs `chezmoi apply` (Starship, Herdr, Neovim). Reload those apps if colors look stale.
+Default **Tokyo Night**. `theme` lists keys; `theme <name>` updates `.chezmoidata.toml` and runs `chezmoi apply` (Starship, Herdr, Neovim, OpenCode TUI). Reload those apps if colors look stale. OpenCode reads the theme from `~/.config/opencode/tui.json` (not `opencode.json`).
 
 ## Toolchains
 
