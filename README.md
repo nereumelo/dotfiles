@@ -254,7 +254,7 @@ WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFI
 - `default_domain = "WSL:arch"` (WezTerm names WSL domains `WSL:` + `wsl -l` name)
 - `wsl_domains.default_cwd = "~"` so new windows/tabs open in the Linux home, not `C:\Users\...`
 - `wsl_domains.default_prog` starts **herdr** (`bash -lc` so `~/.local/bin` is on PATH). If herdr is missing, login bash. **Ctrl+Shift+L** launcher has a Bash entry for a normal shell
-- Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, `window_background_opacity = 0.97`, `initial_cols = 102`, `initial_rows = 26`
+- Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, `window_background_opacity = 0.97`, `initial_cols = 102`, `initial_rows = 26`. Neovim (tokyonight `transparent = true`) does not paint a solid `Normal` background, so that WezTerm opacity shows through.
 - Clipboard: select copies; **Ctrl+C** copies when there is a selection (otherwise interrupt); **Ctrl+V** pastes
 - Links: click or **Ctrl+click** opens the Windows default browser (`OpenLinkAtMouseCursor`). Copy-on-select left-click had replaced WezTerm's default, so Ctrl+click did nothing until this binding was restored
 

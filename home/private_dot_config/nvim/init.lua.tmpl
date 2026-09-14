@@ -29,6 +29,12 @@ require("lazy").setup({
     priority = 1000,
     opts = {
       style = {{ index $t "nvim_style" | quote }},
+      -- Clear Normal bg so WezTerm window_background_opacity shows through.
+      transparent = true,
+      styles = {
+        sidebars = "transparent",
+        floats = "transparent",
+      },
     },
     config = function(_, opts)
       require("tokyonight").setup(opts)
