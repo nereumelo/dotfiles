@@ -1,5 +1,11 @@
-# Managed by chezmoi. Host blocks live in ~/.ssh/config.local (not tracked):
-#   HostName, User, IdentityAgent, IdentitiesOnly, IdentityFile
+# Managed by chezmoi.
+# HostName, User, IdentityAgent, IdentitiesOnly → ~/.ssh/config.local (not tracked)
+# IdentityFile → ssh-pub writes ~/.ssh/config.identity; inlined here so it shows in this file.
 # ssh-host-local <host> <hostname> <user>
 # ssh-pub <host> <key>
 Include config.local
+{{- $idf := joinPath .chezmoi.homeDir ".ssh/config.identity" -}}
+{{- if stat $idf }}
+
+{{ trim (output "cat" $idf) }}
+{{- end }}
