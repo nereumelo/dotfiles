@@ -150,8 +150,9 @@ WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFI
 - `default_domain = "WSL:arch"` (WezTerm names WSL domains `WSL:` + `wsl -l` name)
 - `wsl_domains.default_cwd = "~"` so new windows/tabs open a Linux shell in the Linux home, not `C:\Users\...`
 - Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`
+- Clipboard: select copies; **Ctrl+C** copies when there is a selection (otherwise interrupt); **Ctrl+V** pastes
 
-`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme.
+`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling clipboard keybinds, copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
 
 Do not install or launch Linux/WSLg `wezterm`.
 
