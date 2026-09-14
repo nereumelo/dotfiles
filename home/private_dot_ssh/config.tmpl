@@ -1,31 +1,5 @@
-# Managed by chezmoi. VPS HostName/User live in config.local (not tracked).
-# Private keys stay in Bitwarden; only .pub files on disk.
-
-Host github.com
-  HostName github.com
-  User git
-  IdentityAgent ~/.bitwarden-ssh-agent.sock
-  IdentitiesOnly yes
-{{- if stat (joinPath .chezmoi.homeDir ".ssh/home-personal.pub") }}
-  IdentityFile ~/.ssh/home-personal.pub
-{{- end }}
-
-{{- if and .git.work.enabled (stat (joinPath .chezmoi.homeDir ".ssh/work.pub")) }}
-
-Host github.com-work
-  HostName github.com
-  User git
-  IdentityAgent ~/.bitwarden-ssh-agent.sock
-  IdentitiesOnly yes
-  IdentityFile ~/.ssh/work.pub
-{{- end }}
-
-Host vps
-  IdentityAgent ~/.bitwarden-ssh-agent.sock
-  IdentitiesOnly yes
-{{- if stat (joinPath .chezmoi.homeDir ".ssh/vps.pub") }}
-  IdentityFile ~/.ssh/vps.pub
-{{- end }}
-  # HostName + User come from config.local (not tracked)
-
+# Managed by chezmoi. Host blocks live in ~/.ssh/config.local (not tracked):
+#   HostName, User, IdentityAgent, IdentitiesOnly, IdentityFile
+# ssh-host-local <host> <hostname> <user>
+# ssh-pub <host> <key>
 Include config.local

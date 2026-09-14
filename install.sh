@@ -191,6 +191,8 @@ fi
 
 # --- SSH prep ---
 log "SSH prep (dirs, stable .pub names, config.local)"
+# shellcheck source=home/private_dot_config/bash/functions.sh
+. "$REPO/home/private_dot_config/bash/functions.sh"
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 
@@ -208,29 +210,36 @@ if [[ ! -f "$HOME/.ssh/vps.pub" ]]; then
   fi
 fi
 
-touch "$HOME/.ssh/config.local"
-chmod 600 "$HOME/.ssh/config.local"
+_ssh_ensure_config_local
 
-# Seed VPS HostName/User into config.local if empty and old config has them
-if ! grep -qE '^\s*HostName\s+' "$HOME/.ssh/config.local" 2>/dev/null; then
-  if [[ -f "$HOME/.ssh/config" ]] && grep -q 'Host vps' "$HOME/.ssh/config"; then
-    # Extract HostName/User from existing Host vps block (best-effort)
-    awk '
-      BEGIN{inblock=0}
-      /^Host[ \t]+vps([ \t]|$)/ {inblock=1; next}
-      /^Host[ \t]/ {if(inblock) exit}
-      inblock && /^[ \t]*HostName[ \t]+/ {print}
-      inblock && /^[ \t]*User[ \t]+/ {print}
-    ' "$HOME/.ssh/config" >"$HOME/.ssh/config.local.tmp" || true
-    if [[ -s "$HOME/.ssh/config.local.tmp" ]]; then
-      {
-        echo "Host vps"
-        cat "$HOME/.ssh/config.local.tmp"
-      } >>"$HOME/.ssh/config.local"
-      log "Seeded VPS HostName/User into ~/.ssh/config.local from existing ssh config"
-    fi
-    rm -f "$HOME/.ssh/config.local.tmp"
-  fi
+# github.com always lives in config.local (not the chezmoi tmpl).
+ssh-host-local github.com github.com git >/dev/null
+# OpenSSH expands ~ in IdentityFile; do not use $HOME here.
+# shellcheck disable=SC2088
+if [[ -f "$HOME/.ssh/home-personal.pub" ]]; then
+  _ssh_set_identity_file github.com "~/.ssh/home-personal.pub"
+fi
+
+# Refresh or seed Host vps from config.local / leftover ~/.ssh/config HostName+User.
+vps_hn="$(_ssh_local_field vps HostName || true)"
+vps_user="$(_ssh_local_field vps User || true)"
+if [[ -z "$vps_hn" && -f "$HOME/.ssh/config" ]]; then
+  vps_hn="$(_ssh_local_field vps HostName "$HOME/.ssh/config" || true)"
+fi
+if [[ -z "$vps_user" && -f "$HOME/.ssh/config" ]]; then
+  vps_user="$(_ssh_local_field vps User "$HOME/.ssh/config" || true)"
+fi
+if [[ -n "$vps_hn" && -n "$vps_user" ]]; then
+  ssh-host-local vps "$vps_hn" "$vps_user" >/dev/null
+  log "Host vps in ~/.ssh/config.local (HostName $vps_hn User $vps_user)"
+fi
+if [[ -f "$HOME/.ssh/vps.pub" ]] && _ssh_host_in_local vps; then
+  # shellcheck disable=SC2088
+  _ssh_set_identity_file vps "~/.ssh/vps.pub"
+fi
+if [[ -f "$HOME/.ssh/work.pub" ]] && _ssh_host_in_local github.com-work; then
+  # shellcheck disable=SC2088
+  _ssh_set_identity_file github.com-work "~/.ssh/work.pub"
 fi
 
 # --- Backup ---
@@ -315,7 +324,9 @@ Install finished.
 Next (manual):
   1. Unlock Arch Bitwarden desktop; enable SSH agent
   2. Import private keys into Bitwarden SSH; leave only .pub in ~/.ssh/
-  3. Confirm ~/.ssh/config.local has VPS HostName/User
+  3. ssh-host-local vps YOUR_IP_OR_DNS YOUR_USER
+     ssh-pub github.com home-personal
+     ssh-pub vps vps
   4. Add home-personal.pub as a GitHub/GitLab Signing key
   5. Open a new Windows WezTerm window (docker group + bashrc)
   6. Until BW agent is ready, use: git commit --no-gpg-sign

@@ -74,6 +74,16 @@ if [[ -S "$HOME/.bitwarden-ssh-agent.sock" ]]; then
 else
   soft "No socket at ~/.bitwarden-ssh-agent.sock — unlock Arch Bitwarden"
 fi
+if [[ -f "$HOME/.ssh/config" ]] && grep -qE '^Include[[:space:]]+config\.local' "$HOME/.ssh/config"; then
+  ok "ssh config Includes config.local"
+else
+  soft "$HOME/.ssh/config does not Include config.local (chezmoi apply?)"
+fi
+if [[ -f "$HOME/.ssh/config.local" ]] && grep -qE '^Host[[:space:]]+github\.com([[:space:]]|$)' "$HOME/.ssh/config.local"; then
+  ok "config.local has Host github.com"
+else
+  soft "config.local missing Host github.com — ssh-host-local github.com github.com git"
+fi
 if [[ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
   soft "No DISPLAY/WAYLAND_DISPLAY — Bitwarden GUI/agent may need WSLg"
 fi
