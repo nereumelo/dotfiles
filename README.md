@@ -234,7 +234,7 @@ Default **Tokyo Night**. `theme` lists keys; `theme <name>` updates `.chezmoidat
 
 - mise globals: `node@lts`, `python@latest` (`mise install` after apply)
 - direnv hook after mise; allow `.envrc` per repo
-- Agents: OpenCode 2 (`opencode2`, AUR `opencode-beta` or https://opencode.ai/v2/install) — not extra/opencode (v1) · Herdr, Cursor CLI (`agent`), Claude Code (`claude`)
+- Agents: OpenCode 2 (`opencode` via https://opencode.ai/v2/install into `~/.opencode/bin`, not extra/opencode 1.x) · Herdr, Cursor CLI (`agent`), Claude Code (`claude`)
 
 ## Out of scope
 

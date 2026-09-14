@@ -98,10 +98,13 @@ if ((${#PKGS[@]})); then
   sudo pacman -S --needed --noconfirm "${PKGS[@]}"
 fi
 
-# extra/opencode is OpenCode 1 and conflicts with AUR opencode-beta (v2).
-if pacman -Q opencode >/dev/null 2>&1 && ! command -v opencode2 >/dev/null 2>&1; then
-  log "Removing OpenCode v1 (extra/opencode); this repo uses OpenCode 2"
-  sudo pacman -R --noconfirm opencode || warn "could not remove extra/opencode"
+# extra/opencode is OpenCode 1 (same binary name as v2). Remove 1.x only.
+if pacman -Q opencode >/dev/null 2>&1; then
+  oc_ver="$(pacman -Q opencode | awk '{print $2}')"
+  if [[ "$oc_ver" == 1.* ]]; then
+    log "Removing OpenCode v1 extra/opencode $oc_ver (v2 is ~/.opencode/bin/opencode)"
+    sudo pacman -R --noconfirm opencode || warn "could not remove extra/opencode"
+  fi
 fi
 
 # --- AUR ---
@@ -189,19 +192,19 @@ install_herdr || warn "herdr install failed (non-fatal)"
 install_cursor_cli || warn "Cursor CLI install failed (non-fatal)"
 install_claude || warn "Claude Code install failed (non-fatal)"
 
-install_opencode2() {
-  if command -v opencode2 >/dev/null 2>&1; then
-    log "OpenCode 2 present: $(command -v opencode2)"
+install_opencode_v2() {
+  export PATH="$HOME/.opencode/bin:$PATH"
+  if [[ -x "$HOME/.opencode/bin/opencode" ]]; then
+    log "OpenCode 2 present: $HOME/.opencode/bin/opencode"
     return 0
   fi
-  log "Installing OpenCode 2 (official v2 script → ~/.opencode/bin)"
+  log "Installing OpenCode 2 (https://opencode.ai/v2/install → ~/.opencode/bin/opencode)"
   mkdir -p "$HOME/.opencode/bin"
   curl -fsSL https://opencode.ai/v2/install | bash -s -- --no-modify-path
-  export PATH="$HOME/.opencode/bin:$PATH"
-  command -v opencode2 >/dev/null 2>&1 || command -v opencode >/dev/null 2>&1
+  [[ -x "$HOME/.opencode/bin/opencode" ]]
 }
 
-install_opencode2 || warn "OpenCode 2 install failed (non-fatal)"
+install_opencode_v2 || warn "OpenCode 2 install failed (non-fatal)"
 
 # --- SSH prep ---
 log "SSH prep (dirs, stable .pub names, config.local)"
