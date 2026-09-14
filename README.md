@@ -116,7 +116,7 @@ Then:
 - Re-run `./install.sh` is safe for packages; routine dots still go through chezmoi
 - `./verify.sh` after big changes
 
-bashrc **sources** aliases from `~/.config/bash/` — it does not embed them. Use `\ls` / `\cat` for the real binaries.
+bashrc **sources** aliases from `~/.config/bash/` — it does not embed them. Use `\ls` / `\cat` / `\vim` for the real binaries. `vim` is `nvim`.
 
 ## Privileges
 
