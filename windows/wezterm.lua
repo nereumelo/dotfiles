@@ -14,6 +14,8 @@ config.font_size = 12.0
 config.hide_tab_bar_if_only_one_tab = true
 config.window_background_opacity = 0.85
 config.window_padding = { left = 4, right = 4, top = 2, bottom = 2 }
+config.initial_cols = 80
+config.initial_rows = 20
 
 -- New WSL:arch windows/tabs start herdr. default_prog is not an interactive
 -- shell, so ~/.bashrc returns before PATH includes ~/.local/bin — set PATH
