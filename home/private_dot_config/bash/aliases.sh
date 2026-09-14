@@ -1,5 +1,5 @@
 # ~/.config/bash/aliases.sh — simple aliases only (edit here, then chezmoi apply)
-# Escape hatch: \ls \cat for the real binary.
+# Escape hatch: \ls \cat \vim for the real binary.
 
 # --- fs ---
 alias ls='eza --group-directories-first --icons=auto'
@@ -10,6 +10,9 @@ alias tree='eza --tree --group-directories-first --icons=auto'
 # --- text ---
 alias cat='bat -p'
 alias batp='bat -p'
+
+# --- editor ---
+alias vim='nvim'
 
 # --- git ---
 alias g='git'
