@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# bootstrap.sh — Day 0 entrypoint for a fresh Arch WSL session (still root).
+# bootstrap.sh — in-distro root first-boot for Arch WSL (user, sudo, packages, chezmoi).
 #
-# One-liner (fresh image, no curl yet):
+# Preferred Day 0 (from Windows, not Linux):
+#   irm https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.ps1 | iex
+#
+# Already inside the distro as root:
 #   pacman-key --init && pacman-key --populate archlinux && \
 #     pacman -Syu --noconfirm archlinux-keyring curl && \
 #     curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash
@@ -14,6 +17,7 @@
 #
 # Optional env: DOTFILES_REPO DOTFILES_REF DOTFILES_DIR SKIP_DOCKER SKIP_LAZYDOCKER
 # Skip the user-level installer: DOTFILES_SKIP_INSTALL=1
+# WezTerm is a Windows app (see bootstrap.ps1 / windows/wezterm.lua). Not installed here.
 set -euo pipefail
 
 # This WSL session still has the default Windows PATH until restart.
@@ -44,13 +48,15 @@ read_tty_secret() {
 
 usage() {
   cat <<'EOF'
-bootstrap.sh — root first-boot for Arch WSL dotfiles
+bootstrap.sh — in-distro root first-boot for Arch WSL dotfiles
 
-Run as root. Prompts for a username/password unless WSL_USER and WSL_PASSWORD
-are set, then creates the user, clones the repo to ~/me/dotfiles, and runs
-install.sh as that user.
+Preferred Day 0 is Windows: irm https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.ps1 | iex
 
-Fresh Arch (still root):
+Run this script as root inside distro "arch". Prompts for username/password
+unless WSL_USER and WSL_PASSWORD are set, then creates the user, clones the
+repo to ~/me/dotfiles, and runs install.sh as that user. Does not install WezTerm.
+
+Already inside Arch as root:
   pacman-key --init && pacman-key --populate archlinux && \
     pacman -Syu --noconfirm archlinux-keyring curl && \
     curl -fsSL https://raw.githubusercontent.com/nereumelo/dotfiles/main/bootstrap.sh | bash

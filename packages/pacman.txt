@@ -6,9 +6,6 @@ chezmoi
 mise
 starship
 neovim
-wezterm
-vulkan-icd-loader
-vulkan-swrast
 ttf-jetbrains-mono-nerd
 openssh
 bitwarden
