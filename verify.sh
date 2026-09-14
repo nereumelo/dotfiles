@@ -27,7 +27,13 @@ echo "== Optional agents =="
 if have herdr; then ok "herdr present"; else soft "herdr not on PATH"; fi
 if have agent || have cursor-agent; then ok "Cursor CLI present"; else soft "Cursor CLI (agent) not on PATH"; fi
 if have claude; then ok "Claude Code present"; else soft "claude not on PATH"; fi
-if have opencode2 || have opencode-beta; then ok "OpenCode present"; else soft "opencode2/opencode-beta not on PATH"; fi
+if [[ -x "$HOME/.opencode/bin/opencode" ]]; then
+  ok "OpenCode 2 → $HOME/.opencode/bin/opencode"
+elif have opencode; then
+  soft "opencode at $(command -v opencode) (want v2 at ~/.opencode/bin/opencode, not extra/opencode 1.x)"
+else
+  soft "opencode not on PATH"
+fi
 if [[ -f /usr/share/blesh/ble.sh ]] || [[ -f "$HOME/.local/share/blesh/ble.sh" ]]; then ok "ble.sh present"; else soft "ble.sh missing"; fi
 
 echo
@@ -73,6 +79,16 @@ if [[ -S "$HOME/.bitwarden-ssh-agent.sock" ]]; then
   ok "Bitwarden SSH socket present"
 else
   soft "No socket at ~/.bitwarden-ssh-agent.sock — unlock Arch Bitwarden"
+fi
+if [[ -f "$HOME/.ssh/config" ]] && grep -qE '^Include[[:space:]]+config\.local' "$HOME/.ssh/config"; then
+  ok "ssh config Includes config.local"
+else
+  soft "$HOME/.ssh/config does not Include config.local (chezmoi apply?)"
+fi
+if [[ -f "$HOME/.ssh/config.local" ]] && grep -qE '^Host[[:space:]]+github\.com([[:space:]]|$)' "$HOME/.ssh/config.local"; then
+  ok "config.local has Host github.com"
+else
+  soft "config.local missing Host github.com — ssh-host-local github.com github.com git"
 fi
 if [[ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
   soft "No DISPLAY/WAYLAND_DISPLAY — Bitwarden GUI/agent may need WSLg"
