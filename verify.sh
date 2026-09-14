@@ -35,6 +35,11 @@ else
   soft "opencode not on PATH"
 fi
 if [[ -f /usr/share/blesh/ble.sh ]] || [[ -f "$HOME/.local/share/blesh/ble.sh" ]]; then ok "ble.sh present"; else soft "ble.sh missing"; fi
+if grep -q "completion-ignore-case on" "$HOME/.blerc" 2>/dev/null; then
+  ok "ble.sh completion-ignore-case on"
+else
+  soft "~/.blerc missing completion-ignore-case (chezmoi apply?)"
+fi
 
 echo
 echo "== Configs deployed =="
