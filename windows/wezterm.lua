@@ -12,7 +12,17 @@ config.font = wezterm.font_with_fallback({
 })
 config.font_size = 12.0
 config.hide_tab_bar_if_only_one_tab = true
+config.window_background_opacity = 0.8
 config.window_padding = { left = 8, right = 8, top = 6, bottom = 6 }
+
+-- New WSL:arch windows/tabs start herdr. default_prog is not an interactive
+-- shell, so ~/.bashrc returns before PATH includes ~/.local/bin — set PATH
+-- here. Missing herdr falls back to login bash. Ctrl+Shift+L → Bash.
+local herdr_prog = {
+  "bash",
+  "-lc",
+  [[export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"; command -v herdr >/dev/null && exec herdr; exec bash -l]],
+}
 
 -- Domain name is "WSL:" + the name from `wsl -l` (must be "arch").
 config.wsl_domains = {
@@ -20,9 +30,23 @@ config.wsl_domains = {
     name = "WSL:arch",
     distribution = "arch",
     default_cwd = "~",
+    default_prog = herdr_prog,
   },
 }
 config.default_domain = "WSL:arch"
+
+config.launch_menu = {
+  {
+    label = "Herdr",
+    args = herdr_prog,
+    domain = { DomainName = "WSL:arch" },
+  },
+  {
+    label = "Bash",
+    args = { "bash", "-l" },
+    domain = { DomainName = "WSL:arch" },
+  },
+}
 
 -- Copy on mouse-up (Windows clipboard). Ctrl+C copies if there is a
 -- selection, otherwise SIGINT. Ctrl+V pastes.

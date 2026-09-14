@@ -56,12 +56,12 @@ powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 1. Installs/ensures WSL2
 2. Installs the official Arch WSL distro **named `arch`** (`wsl -l` shows `arch`, not `archlinux`). Reuses it if it already exists
 3. Installs **Windows** WezTerm (`winget install wez.wezterm`) and JetBrainsMono Nerd Font
-4. Writes `%USERPROFILE%\.config\wezterm\wezterm.lua` with `default_domain = "WSL:arch"` (Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, new windows in `~`)
+4. Writes `%USERPROFILE%\.config\wezterm\wezterm.lua` with `default_domain = "WSL:arch"` (Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, opacity `0.8`, new windows in `~` running herdr)
 5. Opens distro `arch` as root and runs `bootstrap.sh` (same in-distro path as below)
 
 Non-interactive Linux user creation: set `WSL_USER` / `WSL_PASSWORD` in that PowerShell session before running the script.
 
-When it finishes, open **Windows WezTerm**. You should land in the Linux home directory.
+When it finishes, open **Windows WezTerm**. You should land in herdr in the Linux home directory (or login bash if herdr is not installed yet).
 
 ### Already inside the distro as root
 
@@ -252,8 +252,9 @@ Bitwarden must be unlocked; **Allow** if the agent prompts. `install.sh` may cop
 WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFILE%\.config\wezterm\wezterm.lua`:
 
 - `default_domain = "WSL:arch"` (WezTerm names WSL domains `WSL:` + `wsl -l` name)
-- `wsl_domains.default_cwd = "~"` so new windows/tabs open a Linux shell in the Linux home, not `C:\Users\...`
-- Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`
+- `wsl_domains.default_cwd = "~"` so new windows/tabs open in the Linux home, not `C:\Users\...`
+- `wsl_domains.default_prog` starts **herdr** (`bash -lc` so `~/.local/bin` is on PATH). If herdr is missing, login bash. **Ctrl+Shift+L** launcher has a Bash entry for a normal shell
+- Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, `window_background_opacity = 0.8`
 - Clipboard: select copies; **Ctrl+C** copies when there is a selection (otherwise interrupt); **Ctrl+V** pastes
 - Links: click or **Ctrl+click** opens the Windows default browser (`OpenLinkAtMouseCursor`). Copy-on-select left-click had replaced WezTerm's default, so Ctrl+click did nothing until this binding was restored
 
@@ -264,7 +265,7 @@ Interactive bash helpers in `~/.config/bash/functions.sh`:
 - `copy` — clipboard via **xclip** (X11) or **wl-copy** (Wayland). WSLg mirrors that to the Windows clipboard. Source encoding is detected (`file --mime-encoding`) and converted to UTF-8 **without a BOM** (a leading U+FEFF was the `clip.exe` UTF-16LE prefix). `copy readme.md` or `cat readme.md | copy` (`cat` is `bat -p`; `copy` reads stdin/`command cat`, not bat). Needs `DISPLAY`/`WAYLAND_DISPLAY` (WSLg).
 - `open` — Windows Explorer (`explorer.exe` is not on PATH). `open` / `open .` is the current directory; `open ~/me/dotfiles` that folder. A file path uses `explorer /select,` so Explorer highlights it.
 
-`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling clipboard or hyperlink keybinds, copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
+`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling WezTerm changes (opacity, herdr default, clipboard, hyperlinks), copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
 
 Do not install or launch Linux/WSLg `wezterm`.
 

@@ -222,10 +222,10 @@ Write-Host @"
 Windows bootstrap finished.
 
 Distro:   $DistroName   (wsl -l)
-WezTerm:  Windows app, default_domain = WSL:arch, new windows start in ~
+WezTerm:  Windows app, default_domain = WSL:arch, new windows start herdr in ~
 Config:   $WeztermLuaDest
 
-Open Windows WezTerm. New windows use domain WSL:arch and start in Linux ~.
+Open Windows WezTerm. New windows use domain WSL:arch and start herdr in Linux ~.
 
 If Linux bootstrap asked you to reboot/shutdown already, you are done.
 --------------------------------------------------------------------
