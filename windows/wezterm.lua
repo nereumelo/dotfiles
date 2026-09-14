@@ -2,6 +2,7 @@
 -- Targets WSL distro "arch" (wsl -l). Do not use Linux/WSLg wezterm.
 
 local wezterm = require("wezterm")
+local act = wezterm.action
 local config = wezterm.config_builder()
 
 config.color_scheme = "Tokyo Night"
@@ -22,5 +23,31 @@ config.wsl_domains = {
   },
 }
 config.default_domain = "WSL:arch"
+
+-- Copy on mouse-up (Windows clipboard). Ctrl+C copies if there is a
+-- selection, otherwise SIGINT. Ctrl+V pastes.
+config.keys = {
+  {
+    key = "c",
+    mods = "CTRL",
+    action = wezterm.action_callback(function(window, pane)
+      local text = window:get_selection_text_for_pane(pane)
+      if text and text ~= "" then
+        window:perform_action(act.CopyTo("ClipboardAndPrimarySelection"), pane)
+      else
+        window:perform_action(act.SendKey({ key = "c", mods = "CTRL" }), pane)
+      end
+    end),
+  },
+  { key = "v", mods = "CTRL", action = act.PasteFrom("Clipboard") },
+}
+
+config.mouse_bindings = {
+  {
+    event = { Up = { streak = 1, button = "Left" } },
+    mods = "NONE",
+    action = act.CompleteSelection("ClipboardAndPrimarySelection"),
+  },
+}
 
 return config

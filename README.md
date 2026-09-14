@@ -98,7 +98,7 @@ Sudo is prompted for pacman / systemctl / usermod / chsh only. Env flags: `SKIP_
 
 Then:
 
-1. Unlock **Arch** Bitwarden → enable SSH agent → import keys → fill `~/.ssh/config.local` for VPS (checklist below).
+1. Unlock **Arch** Bitwarden → enable SSH agent → GitHub + VPS keys (sections below).
 2. `./verify.sh`
 3. Open a **new WezTerm window** (bash + docker group).
 4. Per repo: add `.envrc` + `direnv allow` when needed; projects may also use `mise.toml`.
@@ -128,20 +128,90 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 - Personal identity from `.chezmoidata.toml`; work via `includeIf "gitdir:~/work/"` → `~/.config/git/config-work`
 - `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
 - SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK=~/.bitwarden-ssh-agent.sock`
-- VPS **HostName/User only** in `~/.ssh/config.local` (gitignored)
-
-### VPS / key migration checklist
-
-1. `touch ~/.ssh/config.local && chmod 600 ~/.ssh/config.local`
-2. Put HostName/User under `Host vps` in `config.local` (install may seed from old `~/.ssh/config`)
-3. Stable pubs: `home-personal.pub`, `vps.pub` (install copies `vps_srv1938886.pub` → `vps.pub` when present)
-4. Import private keys into Bitwarden SSH; enable agent; unlock
-5. `ssh -T git@github.com` and `ssh vps`
-6. Remove private key files from `~/.ssh/` (leave `.pub` only)
-7. Add the same pubkey as a GitHub/GitLab **Signing key**
-8. Until the agent is ready: `git commit --no-gpg-sign`
+- `~/.ssh/config` uses `IdentitiesOnly yes` plus `IdentityFile` on the **public** key. Without that `.pub` on disk, OpenSSH ignores the agent (`identity file … type -1`, never `Offering public key`)
+- Private keys stay in the **Arch** Bitwarden desktop SSH agent. There is no headless Bitwarden SSH daemon — the app must stay open and unlocked. `bw` CLI cannot sign SSH
+- Site passwords (browser) are the Windows Bitwarden extension / same account; they are not this socket
+- `cat` is aliased to `bat` — use `\cat` when you need the real binary
+- Work in the Linux home (`wsl ~` / WezTerm `WSL:arch`). `wsl` from `C:\Users\…` lands on `/mnt/c` and Git/SSH there are the wrong tree
 
 Bitwarden vault syncs via your account across Windows/Arch clients. Enable the SSH agent in the **Arch** desktop app. Do not bridge Windows `npiperelay` into WSL for this setup.
+
+### Bitwarden agent (once)
+
+1. Install/open **Arch** Bitwarden (pacman `bitwarden`), sign in, unlock
+2. Settings → enable **SSH agent**
+3. Confirm the socket and that keys appear after you import them:
+
+```bash
+echo "$SSH_AUTH_SOCK"    # ~/.bitwarden-ssh-agent.sock
+ls -l ~/.bitwarden-ssh-agent.sock
+ssh-add -l               # empty until SSH-key items exist and the vault is unlocked
+```
+
+`agent refused operation` means the desktop refused to sign: bring the Bitwarden window forward and **Allow**, or disable per-use confirmation in SSH-agent settings. WSLg often hides that prompt.
+
+### GitHub (`ssh git@github.com` + commit signing)
+
+Private key only in Bitwarden (New item → **SSH key**: import or generate Ed25519). Name it e.g. `home-personal`.
+
+Write **only** the public key to disk (required for `IdentitiesOnly`):
+
+```bash
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+ssh-add -L | grep -i 'home-personal' > ~/.ssh/home-personal.pub
+chmod 644 ~/.ssh/home-personal.pub
+\cat ~/.ssh/home-personal.pub | ssh-keygen -lf -   # note SHA256:…
+chezmoi apply   # injects IdentityFile ~/.ssh/home-personal.pub under Host github.com
+```
+
+On GitHub → Settings → SSH and GPG keys, paste that same line twice:
+
+1. **New SSH key** → type **Authentication Key** (`ssh -T` uses this)
+2. **New SSH key** → type **Signing key** (commits; `gpg.format=ssh`)
+
+A signing-only key is not enough for `ssh -T`.
+
+```bash
+ssh -T git@github.com
+# success: Hi <user>! You've successfully authenticated, but GitHub does not provide shell access.
+# exit status 1 is normal (no shell)
+```
+
+If it still fails, `ssh -o IdentitiesOnly=no -T git@github.com` tests the agent without the `.pub`. After `home-personal.pub` exists, drop the `-o`.
+
+Until the agent is unlocked: `git commit --no-gpg-sign`.
+
+### VPS (`ssh vps`)
+
+Use a **separate** Bitwarden SSH-key item (e.g. `vps`), not `home-personal`, unless that exact public key is also in the server `authorized_keys`.
+
+```bash
+ssh-add -L | grep -i vps > ~/.ssh/vps.pub
+chmod 644 ~/.ssh/vps.pub
+chezmoi apply   # injects IdentityFile ~/.ssh/vps.pub under Host vps
+```
+
+HostName and User are **not** in git. `~/.ssh/config.local` (gitignored):
+
+```bash
+touch ~/.ssh/config.local && chmod 600 ~/.ssh/config.local
+```
+
+```
+Host vps
+  HostName YOUR_IP_OR_DNS
+  User YOUR_REMOTE_USER
+```
+
+`Include config.local` merges this with the chezmoi `Host vps` block (agent + `IdentitiesOnly` + `vps.pub`).
+
+Install the **same** public line on the server (`~/.ssh/authorized_keys` for that User), then:
+
+```bash
+ssh vps
+```
+
+Bitwarden must be unlocked; **Allow** if the agent prompts. `install.sh` may copy a legacy `vps_srv1938886.pub` → `vps.pub` when present. Delete leftover **private** key files from `~/.ssh/` after import.
 
 ## WezTerm (Windows → WSL:arch)
 
@@ -150,8 +220,9 @@ WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFI
 - `default_domain = "WSL:arch"` (WezTerm names WSL domains `WSL:` + `wsl -l` name)
 - `wsl_domains.default_cwd = "~"` so new windows/tabs open a Linux shell in the Linux home, not `C:\Users\...`
 - Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`
+- Clipboard: select copies; **Ctrl+C** copies when there is a selection (otherwise interrupt); **Ctrl+V** pastes
 
-`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme.
+`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling clipboard keybinds, copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
 
 Do not install or launch Linux/WSLg `wezterm`.
 
