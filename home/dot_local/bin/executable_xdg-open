@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# WSL shim: xdg-open → Windows default handler (claude/gh/opencode OAuth, etc.)
+# Do not fall back to /usr/bin/xdg-open inside WSL — that tries a Linux GUI browser.
+set -euo pipefail
+
+in_wsl() {
+  [[ -n "${WSL_DISTRO_NAME:-}" || -n "${WSL_INTEROP:-}" || -e /proc/sys/fs/binfmt_misc/WSLInterop ]]
+}
+
+if in_wsl; then
+  if command -v windows-open >/dev/null 2>&1; then
+    exec windows-open "$@"
+  fi
+  printf 'xdg-open: WSL needs ~/.local/bin/windows-open on PATH\n' >&2
+  exit 1
+fi
+
+if [[ -x /usr/bin/xdg-open ]]; then
+  exec /usr/bin/xdg-open "$@"
+fi
+
+printf 'xdg-open: no handler\n' >&2
+exit 1

@@ -42,12 +42,25 @@ config.keys = {
   { key = "v", mods = "CTRL", action = act.PasteFrom("Clipboard") },
 }
 
+-- Copy on select. Ctrl+click (and click on a hyperlink) opens in the
+-- Windows default browser. Defining mouse_bindings replaces WezTerm
+-- defaults, so OpenLinkAtMouseCursor must be listed explicitly.
 config.mouse_bindings = {
   {
     event = { Up = { streak = 1, button = "Left" } },
     mods = "NONE",
-    action = act.CompleteSelection("ClipboardAndPrimarySelection"),
+    action = act.Multiple({
+      act.OpenLinkAtMouseCursor,
+      act.CompleteSelection("ClipboardAndPrimarySelection"),
+    }),
+  },
+  {
+    event = { Up = { streak = 1, button = "Left" } },
+    mods = "CTRL",
+    action = act.OpenLinkAtMouseCursor,
   },
 }
+
+config.hyperlink_rules = wezterm.default_hyperlink_rules()
 
 return config

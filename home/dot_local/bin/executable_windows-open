@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Open a URL or file with the Windows default handler.
+# Needed because wsl.conf sets appendWindowsPath=false (no cmd.exe on PATH)
+# and there is no Linux GUI browser in this setup.
+set -euo pipefail
+
+if [[ $# -lt 1 || -z "${1:-}" ]]; then
+  printf 'usage: windows-open <url-or-path>\n' >&2
+  exit 2
+fi
+
+target="$1"
+
+windows_exe() {
+  local p
+  for p in "$@"; do
+    if [[ -x "$p" ]]; then
+      printf '%s\n' "$p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [[ "$target" == http://* || "$target" == https://* || "$target" == file://* ]]; then
+  win="$target"
+elif [[ -e "$target" ]] && command -v wslpath >/dev/null 2>&1; then
+  win="$(wslpath -w "$target")"
+else
+  win="$target"
+fi
+
+ps="$(windows_exe \
+  /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe \
+  /mnt/c/Windows/Sysnative/WindowsPowerShell/v1.0/powershell.exe || true)"
+
+if [[ -n "${ps:-}" ]]; then
+  # Single-quoted Start-Process so OAuth query '&' is not interpreted by cmd.
+  esc="${win//\'/\'\'}"
+  "$ps" -NoProfile -NonInteractive -WindowStyle Hidden \
+    -Command "Start-Process -FilePath '$esc'" >/dev/null 2>&1
+  exit 0
+fi
+
+cmd="$(windows_exe \
+  /mnt/c/Windows/System32/cmd.exe \
+  /mnt/c/Windows/Sysnative/cmd.exe || true)"
+
+if [[ -n "${cmd:-}" ]]; then
+  "$cmd" /c start "" "$win" >/dev/null 2>&1
+  exit 0
+fi
+
+printf 'windows-open: no Windows powershell.exe/cmd.exe under /mnt/c/Windows (WSL interop?)\n' >&2
+exit 1
