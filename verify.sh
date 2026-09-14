@@ -119,10 +119,15 @@ if [[ -x /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe ]] \
 else
   soft "no powershell.exe/cmd.exe under /mnt/c/Windows — WSL interop off?"
 fi
-if [[ -x /mnt/c/Windows/System32/clip.exe ]] || [[ -x /mnt/c/Windows/Sysnative/clip.exe ]]; then
-  ok "clip.exe under /mnt/c/Windows"
+if have xclip; then
+  ok "xclip → $(command -v xclip)"
 else
-  soft "no clip.exe under /mnt/c/Windows — copy() needs WSL interop"
+  soft "xclip missing — copy() uses the X11 clipboard (pacman extra/xclip)"
+fi
+if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
+  ok "WSLg display DISPLAY=${DISPLAY-} WAYLAND_DISPLAY=${WAYLAND_DISPLAY-}"
+else
+  soft "no DISPLAY/WAYLAND_DISPLAY — copy() needs WSLg"
 fi
 if [[ -x /mnt/c/Windows/explorer.exe ]] || [[ -x /mnt/c/Windows/System32/explorer.exe ]]; then
   ok "explorer.exe under /mnt/c/Windows"

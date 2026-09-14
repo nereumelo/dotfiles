@@ -32,26 +32,55 @@ _copy_iconv_from() {
   esac
 }
 
-# Encode bytes as UTF-16LE with BOM (what clip.exe treats as Unicode).
-_copy_to_clip() {
-  local clip="$1" from="$2" src="$3" out="$4"
-  if [[ "$from" == UTF-16LE ]]; then
-    command cat -- "$src" >"$out" || return
-  else
-    {
-      printf '\xff\xfe'
-      iconv -f "$from" -t UTF-16LE -- "$src"
-    } >"$out" || return
+# Drop a leading UTF-8 BOM (U+FEFF) so it is not pasted as the first char.
+_copy_strip_utf8_bom() {
+  local f="$1" tmp sig
+  [[ -s "$f" ]] || return 0
+  sig="$(command head -c 3 "$f")" || return
+  if [[ "$sig" != $'\xef\xbb\xbf' ]]; then
+    return 0
   fi
-  "$clip" <"$out"
+  tmp="$(mktemp)" || return
+  command tail -c +4 "$f" >"$tmp" && mv "$tmp" "$f" || { rm -f "$tmp"; return 1; }
 }
 
-# Windows clipboard. Detects the source encoding so UTF-8 (and others)
-# are not reinterpreted as the OEM code page.
+# Convert source bytes to UTF-8 text with no BOM (X11/Wayland clipboard).
+_copy_to_utf8() {
+  local from="$1" src="$2" out="$3"
+  if [[ "$from" == UTF-8 ]]; then
+    command cat -- "$src" >"$out" || return
+  else
+    iconv -f "$from" -t UTF-8 -- "$src" >"$out" || return
+  fi
+  _copy_strip_utf8_bom "$out"
+}
+
+# WSLg shares the X11/Wayland clipboard with Windows. No clip.exe / BOM.
+_copy_to_clipboard() {
+  local payload="$1"
+  if [[ -n "${DISPLAY:-}" ]] && command -v xclip >/dev/null 2>&1; then
+    if xclip -selection clipboard -in <"$payload"; then
+      return 0
+    fi
+  fi
+  if [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v wl-copy >/dev/null 2>&1; then
+    if wl-copy --type text/plain <"$payload"; then
+      return 0
+    fi
+  fi
+  if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+    printf 'copy: no DISPLAY/WAYLAND_DISPLAY (WSLg?)\n' >&2
+    return 1
+  fi
+  printf 'copy: need xclip (X11) or wl-copy (Wayland)\n' >&2
+  return 1
+}
+
+# Clipboard via WSLg (xclip / wl-copy). Detects source encoding, emits UTF-8.
 #   copy [file]
 #   <cmd> | copy
 copy() {
-  local clip tmp out enc from
+  local tmp out enc from
   if [[ $# -gt 1 ]]; then
     printf 'usage: copy [file]\n       <cmd> | copy\n' >&2
     return 2
@@ -65,13 +94,6 @@ copy() {
     printf 'usage: copy [file]\n       <cmd> | copy\n' >&2
     return 2
   fi
-
-  clip="$(_windows_exe \
-    /mnt/c/Windows/System32/clip.exe \
-    /mnt/c/Windows/Sysnative/clip.exe)" || {
-    printf 'copy: clip.exe not found under /mnt/c/Windows (WSL interop?)\n' >&2
-    return 1
-  }
 
   tmp="$(mktemp)" || return
   out="$(mktemp)" || { rm -f "$tmp"; return 1; }
@@ -90,21 +112,20 @@ copy() {
   enc="${enc,,}"
   from="$(_copy_iconv_from "$enc")"
 
-  if _copy_to_clip "$clip" "$from" "$tmp" "$out"; then
+  if _copy_to_utf8 "$from" "$tmp" "$out" && _copy_to_clipboard "$out"; then
     rm -f "$tmp" "$out"
     return 0
   fi
-  if [[ "$from" != UTF-8 ]] && _copy_to_clip "$clip" UTF-8 "$tmp" "$out"; then
+  if [[ "$from" != UTF-8 ]] && _copy_to_utf8 UTF-8 "$tmp" "$out" && _copy_to_clipboard "$out"; then
     rm -f "$tmp" "$out"
     return 0
   fi
-  # Last resort: 1:1 byte → U+00xx so the original octets survive.
-  if [[ "$from" != ISO-8859-1 ]] && _copy_to_clip "$clip" ISO-8859-1 "$tmp" "$out"; then
+  if [[ "$from" != ISO-8859-1 ]] && _copy_to_utf8 ISO-8859-1 "$tmp" "$out" && _copy_to_clipboard "$out"; then
     rm -f "$tmp" "$out"
     return 0
   fi
 
-  printf 'copy: could not encode for clip.exe (detected %s)\n' "$enc" >&2
+  printf 'copy: could not put text on the clipboard (detected %s)\n' "$enc" >&2
   rm -f "$tmp" "$out"
   return 1
 }
