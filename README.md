@@ -108,6 +108,7 @@ Then:
 
 - Edit under `home/` or `chezmoi edit ~/.bashrc`
 - Aliases/functions: `home/private_dot_config/bash/aliases.sh` / `functions.sh`, then `chezmoi apply`
+- ble.sh (`~/.blerc`): case-insensitive TAB and auto-complete via `completion-ignore-case`
 - Machine-only: `~/.config/bash/aliases.local.sh` (untracked)
 - `chezmoi diff` / `chezmoi apply`
 - `theme` / `theme tokyo-night` / `theme catppuccin`
