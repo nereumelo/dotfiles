@@ -1,5 +1,6 @@
 # Local / machine-only
 **/.ssh/config.local
+**/.ssh/config.identity
 **/aliases.local.sh
 **/*.local.toml
 **/.chezmoi.local.toml

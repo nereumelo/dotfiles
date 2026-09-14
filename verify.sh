@@ -98,6 +98,16 @@ if [[ -f "$HOME/.ssh/config.local" ]] && grep -qE '^Host[[:space:]]+github\.com(
 else
   soft "config.local missing Host github.com — ssh-host-local github.com github.com git"
 fi
+if [[ -f "$HOME/.ssh/home-personal.pub" ]]; then
+  if grep -qE '^[[:space:]]*IdentityFile[[:space:]]+' "$HOME/.ssh/config" 2>/dev/null; then
+    ok "IdentityFile in ~/.ssh/config (ssh-pub)"
+  else
+    soft "home-personal.pub present but IdentityFile not in ~/.ssh/config — ssh-pub github.com home-personal"
+  fi
+  if grep -qE '^[[:space:]]*IdentityFile[[:space:]]+' "$HOME/.ssh/config.local" 2>/dev/null; then
+    soft "IdentityFile still in config.local — ssh-pub to move it into config"
+  fi
+fi
 if [[ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
   soft "No DISPLAY/WAYLAND_DISPLAY — Bitwarden GUI/agent may need WSLg"
 fi

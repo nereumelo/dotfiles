@@ -207,7 +207,7 @@ install_opencode_v2() {
 install_opencode_v2 || warn "OpenCode 2 install failed (non-fatal)"
 
 # --- SSH prep ---
-log "SSH prep (dirs, stable .pub names, config.local)"
+log "SSH prep (dirs, stable .pub names, config.local + IdentityFile)"
 # shellcheck source=home/private_dot_config/bash/functions.sh
 . "$REPO/home/private_dot_config/bash/functions.sh"
 mkdir -p "$HOME/.ssh"

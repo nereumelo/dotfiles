@@ -170,12 +170,9 @@ open() {
   fi
 }
 
-# Host blocks live in ~/.ssh/config.local (not git):
-#   HostName, User, IdentityAgent, IdentitiesOnly, IdentityFile
-# ssh-host-local <host> <hostname> <user>
-# ssh-pub <host> <key>
-# One Host alias per block. github.com and github.com-acme are distinct
-# (same HostName github.com, different keys). Re-runs are idempotent.
+# HostName/User/IdentityAgent/IdentitiesOnly live in ~/.ssh/config.local (not git).
+# IdentityFile lives in ~/.ssh/config.identity and is inlined into ~/.ssh/config
+# by chezmoi (ssh-pub). One Host alias per block.
 
 # Tilde is for OpenSSH config (IdentityAgent ~/.bitwarden-ssh-agent.sock), not bash expansion.
 # shellcheck disable=SC2088
@@ -190,6 +187,19 @@ _ssh_ensure_config_local() {
   chmod 700 "${HOME}/.ssh"
   local f
   f="$(_ssh_config_local)"
+  [[ -e "$f" ]] || touch "$f"
+  chmod 600 "$f"
+}
+
+_ssh_config_identity() {
+  printf '%s\n' "${HOME}/.ssh/config.identity"
+}
+
+_ssh_ensure_config_identity() {
+  mkdir -p "${HOME}/.ssh" || return
+  chmod 700 "${HOME}/.ssh"
+  local f
+  f="$(_ssh_config_identity)"
   [[ -e "$f" ]] || touch "$f"
   chmod 600 "$f"
 }
@@ -261,14 +271,16 @@ _ssh_expand_identity_path() {
 _ssh_identity_points_to() {
   local host="$1" want="$2"
   local have
-  have="$(_ssh_local_field "$host" IdentityFile || true)"
+  have="$(_ssh_local_field "$host" IdentityFile "$(_ssh_config_identity)" || true)"
+  if [[ -z "$have" ]]; then
+    have="$(_ssh_local_field "$host" IdentityFile || true)"
+  fi
   [[ -n "$have" ]] || return 1
   [[ "$(_ssh_expand_identity_path "$have")" == "$(_ssh_expand_identity_path "$want")" ]]
 }
 
-# MODE=setup     host hostname user   — set HostName/User + agent defaults; keep IdentityFile
-# MODE=identity  host [identity_file] — keep HostName/User; set IdentityFile if given; fill agent
-# MODE=agent     host                 — keep HostName/User/IdentityFile; fill agent defaults only
+# MODE=setup  host hostname user — set HostName/User + agent defaults (no IdentityFile)
+# MODE=agent  host               — keep HostName/User/extras; fill agent; drop IdentityFile
 _ssh_rewrite_local_host() {
   local mode="$1" host="$2"
   local hostname="${3:-}" user="${4:-}" identity_file="${5:-}"
@@ -297,15 +309,14 @@ _ssh_rewrite_local_host() {
       for (i = 1; i <= n_other; i++) leftover_names = leftover_names (i == 1 ? "" : " ") others[i]
       return matched
     }
-    function emit_kv(hn, usr, ag, io, idf,    i) {
+    function emit_kv(hn, usr, ag, io,    i) {
       if (hn != "") print "  HostName " hn
       if (usr != "") print "  User " usr
       print "  IdentityAgent " ag
       print "  IdentitiesOnly " io
-      if (idf != "") print "  IdentityFile " idf
       for (i = 1; i <= n_extra; i++) print extras[i]
     }
-    function emit_target(    hn, usr, idf, ag, io) {
+    function emit_target(    hn, usr, ag, io) {
       print "Host " host
       if (mode == "setup") {
         hn = hostname
@@ -318,16 +329,14 @@ _ssh_rewrite_local_host() {
         ag = (vals["IdentityAgent"] != "") ? vals["IdentityAgent"] : agent
         io = (vals["IdentitiesOnly"] != "") ? vals["IdentitiesOnly"] : "yes"
       }
-      if (mode == "identity" && identity_file != "") idf = identity_file
-      else idf = vals["IdentityFile"]
-      emit_kv(hn, usr, ag, io, idf)
+      emit_kv(hn, usr, ag, io)
     }
     function emit_leftover(    ag, io) {
       if (leftover_names == "") return
       print "Host " leftover_names
       ag = (vals["IdentityAgent"] != "") ? vals["IdentityAgent"] : agent
       io = (vals["IdentitiesOnly"] != "") ? vals["IdentitiesOnly"] : "yes"
-      emit_kv(vals["HostName"], vals["User"], ag, io, vals["IdentityFile"])
+      emit_kv(vals["HostName"], vals["User"], ag, io)
     }
     function flush() {
       if (!in_block) return
@@ -380,8 +389,10 @@ _ssh_rewrite_local_host() {
       if (raw == "" || raw ~ /^#/) next
       key = $1
       rest = trim(substr($0, index($0, $1) + length($1)))
-      if (key == "HostName" || key == "User" || key == "IdentityAgent" || key == "IdentitiesOnly" || key == "IdentityFile") {
+      if (key == "HostName" || key == "User" || key == "IdentityAgent" || key == "IdentitiesOnly") {
         vals[key] = rest
+      } else if (key == "IdentityFile") {
+        # IdentityFile belongs in ~/.ssh/config.identity (ssh-pub), not config.local
       } else {
         extras[++n_extra] = $0
       }
@@ -398,7 +409,7 @@ _ssh_rewrite_local_host() {
         leftover_names = ""
         emit_target()
       }
-      if ((mode == "identity" || mode == "agent") && !emitted_target) {
+      if (mode == "agent" && !emitted_target) {
         exit 1
       }
       exit 0
@@ -419,7 +430,7 @@ ssh-host-local() {
   if [[ $# -ne 3 ]]; then
     printf 'usage: ssh-host-local <host> <hostname> <user>\n' >&2
     printf 'IdentityAgent (%s) and IdentitiesOnly (yes) are always set.\n' "$_SSH_IDENTITY_AGENT" >&2
-    printf 'Re-run is a no-op when HostName/User/agent already match (IdentityFile and extra keys kept).\n' >&2
+    printf 'Re-run is a no-op when HostName/User/agent already match (Port and extra keys kept).\n' >&2
     return 2
   fi
   local host="$1" hostname="$2" user="$3"
@@ -432,25 +443,108 @@ ssh-host-local() {
     "$host" "$hostname" "$user" "$_SSH_IDENTITY_AGENT"
 }
 
+_ssh_rewrite_identity_host() {
+  local host="$1" identity_file="$2"
+  local f tmp
+  _ssh_ensure_config_identity || return
+  f="$(_ssh_config_identity)"
+  tmp="$(mktemp "${f}.XXXXXX")" || return
+  if ! awk -v host="$host" -v identity_file="$identity_file" '
+    function emit_target() {
+      print "Host " host
+      print "  IdentityFile " identity_file
+    }
+    function flush() {
+      if (!in_block) return
+      if (skip_discard) {
+      } else if (current_is_target) {
+        emit_target()
+        emitted_target = 1
+      } else {
+        printf "%s", buf
+      }
+      buf = ""
+      in_block = 0
+      current_is_target = 0
+      skip_discard = 0
+    }
+    {
+      sub(/\r$/, "")
+    }
+    $1 == "Host" || $1 == "Match" {
+      flush()
+      in_block = 1
+      current_is_target = 0
+      skip_discard = 0
+      if ($1 == "Host") {
+        matched = 0
+        for (i = 2; i <= NF; i++) {
+          if ($i == "" || $i ~ /^#/) break
+          if ($i == host) matched = 1
+        }
+        if (matched) {
+          if (emitted_target) skip_discard = 1
+          else current_is_target = 1
+          next
+        }
+      }
+      buf = $0 ORS
+      next
+    }
+    in_block && skip_discard { next }
+    in_block && current_is_target { next }
+    in_block {
+      buf = buf $0 ORS
+      next
+    }
+    { print }
+    END {
+      flush()
+      if (!emitted_target) emit_target()
+    }
+  ' "$f" >"$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if cmp -s "$tmp" "$f"; then
+    rm -f "$tmp"
+    return 0
+  fi
+  mv "$tmp" "$f"
+  chmod 600 "$f"
+}
+
 _ssh_ensure_host_agent() {
   local host="$1"
   _ssh_rewrite_local_host agent "$host"
 }
 
+# IdentityFile goes in ~/.ssh/config.identity (inlined into ~/.ssh/config).
+# Also drop a leftover IdentityFile from config.local so Include does not win.
 _ssh_set_identity_file() {
   local host="$1" identity_file="$2"
-  _ssh_rewrite_local_host identity "$host" "" "" "$identity_file"
+  _ssh_rewrite_identity_host "$host" "$identity_file" || return
+  if _ssh_host_in_local "$host"; then
+    _ssh_rewrite_local_host agent "$host" || true
+  fi
 }
 
 _ssh_set_identity_file_if_missing() {
   local host="$1" identity_file="$2"
   _ssh_host_in_local "$host" || return 0
-  if _ssh_identity_points_to "$host" "$identity_file"; then
+  local from_idf from_local
+  from_idf="$(_ssh_local_field "$host" IdentityFile "$(_ssh_config_identity)" || true)"
+  from_local="$(_ssh_local_field "$host" IdentityFile || true)"
+  if [[ -n "$from_idf" ]]; then
+    if [[ -n "$from_local" ]]; then
+      _ssh_rewrite_local_host agent "$host" || true
+    fi
     return 0
   fi
-  local have
-  have="$(_ssh_local_field "$host" IdentityFile || true)"
-  [[ -z "$have" ]] || return 0
+  if [[ -n "$from_local" ]]; then
+    _ssh_set_identity_file "$host" "$from_local"
+    return 0
+  fi
   _ssh_set_identity_file "$host" "$identity_file"
 }
 
@@ -468,8 +562,8 @@ _ssh_seed_host() {
 ssh-pub() {
   if [[ $# -ne 2 ]]; then
     printf 'usage: ssh-pub <host> <key>\n' >&2
-    printf 'Writes ~/.ssh/<key>.pub from the agent and sets IdentityFile on Host <host>.\n' >&2
-    printf 'Host must already exist in ~/.ssh/config.local (ssh-host-local).\n' >&2
+    printf 'Writes ~/.ssh/<key>.pub from the agent and IdentityFile on Host <host>\n' >&2
+    printf 'into ~/.ssh/config (via config.identity + chezmoi). Host must exist in config.local.\n' >&2
     return 2
   fi
   local host="$1" key="$2"
@@ -537,8 +631,8 @@ ssh-pub() {
   # shellcheck disable=SC2088
   _ssh_set_identity_file "$host" "$want" || return
 
-  if [[ "$key" == "home-personal" || "$key" == "work" ]] && command -v chezmoi >/dev/null 2>&1; then
-    chezmoi apply || printf 'ssh-pub: wrote the key; chezmoi apply failed (git signing templates)\n' >&2
+  if command -v chezmoi >/dev/null 2>&1; then
+    chezmoi apply || printf 'ssh-pub: wrote the key; chezmoi apply failed (config IdentityFile / git signing)\n' >&2
   fi
 
   printf 'Wrote %s and IdentityFile on Host %s\n' "$dest" "$host"

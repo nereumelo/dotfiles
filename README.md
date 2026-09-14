@@ -31,7 +31,7 @@ dotfiles/
 | `private_dot_config/git/config-work.tmpl` | `~/.config/git/config-work` |
 | `private_dot_config/nvim/` | `~/.config/nvim/` |
 | `private_dot_config/opencode/tui.json.tmpl` | `~/.config/opencode/tui.json` |
-| `private_dot_ssh/config.tmpl` | `~/.ssh/config` (`Include config.local` only) |
+| `private_dot_ssh/config.tmpl` | `~/.ssh/config` (`Include config.local`, then `IdentityFile` from `ssh-pub`) |
 | `dot_local/bin/executable_theme` | `~/.local/bin/theme` |
 | `dot_local/bin/executable_windows-open` | `~/.local/bin/windows-open` (`xdg-open` shim too) |
 
@@ -131,8 +131,8 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 - Personal identity from `.chezmoidata.toml`; work via `includeIf "gitdir:~/work/"` → `~/.config/git/config-work`
 - `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
 - SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK=~/.bitwarden-ssh-agent.sock`
-- `~/.ssh/config` is chezmoi-managed and only `Include`s gitignored `~/.ssh/config.local`. Every `Host` lives there: `HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`, `IdentityFile`
-- `ssh-host-local <host> <hostname> <user>` writes that Host (`IdentityAgent ~/.bitwarden-ssh-agent.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` — it errors if the Host is missing
+- `~/.ssh/config` is chezmoi-managed. It `Include`s gitignored `~/.ssh/config.local` (`HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`) and then inlines `IdentityFile` from `~/.ssh/config.identity` (`ssh-pub`). HostName/User are not in git.
+- `ssh-host-local <host> <hostname> <user>` writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing
 - Without that `.pub` on disk, OpenSSH `IdentitiesOnly` ignores the agent (`identity file … type -1`, never `Offering public key`)
 - Private keys stay in the **Arch** Bitwarden desktop SSH agent. There is no headless Bitwarden SSH daemon — the app must stay open and unlocked. `bw` CLI cannot sign SSH
 - Site passwords (browser) are the Windows Bitwarden extension / same account; they are not this socket
@@ -157,9 +157,9 @@ ssh-add -l               # empty until SSH-key items exist and the vault is unlo
 
 ### Hosts in `config.local`
 
-One SSH alias per `Host` block. `<host>` is the alias you type (`ssh vps`, `git@github.com-acme`); `<hostname>` is the real name (`github.com`, `ssh.github.com`, an IP). Re-running the same command is a no-op: `IdentityFile`, `Port`, and other extra keys stay put.
+One SSH alias per `Host` block. `<host>` is the alias you type (`ssh vps`, `git@github.com-acme`); `<hostname>` is the real name (`github.com`, `ssh.github.com`, an IP).
 
-`install.sh` seeds `Host github.com` **only if it is missing**. If that block already has `HostName ssh.github.com` (or a GitHub Enterprise name), install leaves it. `IdentityAgent` and `IdentitiesOnly` are not function arguments.
+`install.sh` seeds `Host github.com` **only if it is missing**. If that block already has `HostName ssh.github.com` (or a GitHub Enterprise name), install leaves it. `IdentityAgent` and `IdentitiesOnly` are not function arguments. Re-running is a no-op: `Port` and other extra keys in `config.local` stay put.
 
 ```bash
 ssh-host-local github.com github.com git          # skipped by install.sh if Host github.com exists
@@ -170,12 +170,12 @@ ssh-host-local xpto example.com alice
 Then bind a Bitwarden SSH-item comment to that Host:
 
 ```bash
-ssh-pub github.com home-personal    # → ~/.ssh/home-personal.pub + IdentityFile
+ssh-pub github.com home-personal    # → ~/.ssh/home-personal.pub + IdentityFile in ~/.ssh/config
 ssh-pub vps vps
 ssh-pub xpto xpto                   # errors if Host xpto is missing
 ```
 
-`ssh-pub` is idempotent when the `.pub` and `IdentityFile` already match. It runs `chezmoi apply` when it actually writes `home-personal` or `work` (git signing templates).
+`ssh-pub` is idempotent when the `.pub` and `IdentityFile` already match. It writes `IdentityFile` via `~/.ssh/config.identity` and runs `chezmoi apply` so `~/.ssh/config` shows the key (and git signing templates for `home-personal` / `work`).
 
 ### Extra GitHub accounts / orgs
 
