@@ -30,7 +30,7 @@ dotfiles/
 | `private_dot_config/bash/` | `~/.config/bash/` |
 | `private_dot_config/git/config-work.tmpl` | `~/.config/git/config-work` |
 | `private_dot_config/nvim/` | `~/.config/nvim/` |
-| `private_dot_ssh/config.tmpl` | `~/.ssh/config` |
+| `private_dot_ssh/config.tmpl` | `~/.ssh/config` (`Include config.local` only) |
 | `dot_local/bin/executable_theme` | `~/.local/bin/theme` |
 
 `install.sh` owns packages. Chezmoi never installs packages. WezTerm is not an Arch package.
@@ -128,7 +128,9 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 - Personal identity from `.chezmoidata.toml`; work via `includeIf "gitdir:~/work/"` → `~/.config/git/config-work`
 - `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
 - SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK=~/.bitwarden-ssh-agent.sock`
-- `~/.ssh/config` uses `IdentitiesOnly yes` plus `IdentityFile` on the **public** key. Without that `.pub` on disk, OpenSSH ignores the agent (`identity file … type -1`, never `Offering public key`)
+- `~/.ssh/config` is chezmoi-managed and only `Include`s gitignored `~/.ssh/config.local`. Every `Host` lives there: `HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`, `IdentityFile`
+- `ssh-host-local <host> <hostname> <user>` writes that Host (`IdentityAgent ~/.bitwarden-ssh-agent.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` — it errors if the Host is missing
+- Without that `.pub` on disk, OpenSSH `IdentitiesOnly` ignores the agent (`identity file … type -1`, never `Offering public key`)
 - Private keys stay in the **Arch** Bitwarden desktop SSH agent. There is no headless Bitwarden SSH daemon — the app must stay open and unlocked. `bw` CLI cannot sign SSH
 - Site passwords (browser) are the Windows Bitwarden extension / same account; they are not this socket
 - `cat` is aliased to `bat` — use `\cat` when you need the real binary
@@ -150,18 +152,62 @@ ssh-add -l               # empty until SSH-key items exist and the vault is unlo
 
 `agent refused operation` means the desktop refused to sign: bring the Bitwarden window forward and **Allow**, or disable per-use confirmation in SSH-agent settings. WSLg often hides that prompt.
 
-### GitHub (`ssh git@github.com` + commit signing)
+### Hosts in `config.local`
 
-Private key only in Bitwarden (New item → **SSH key**: import or generate Ed25519). Name it e.g. `home-personal`.
+One SSH alias per `Host` block. `<host>` is the alias you type (`ssh vps`, `git@github.com-acme`); `<hostname>` is the real name (`github.com`, `ssh.github.com`, an IP). Re-running the same command is a no-op: `IdentityFile`, `Port`, and other extra keys stay put.
 
-Write **only** the public key to disk (required for `IdentitiesOnly`):
+`install.sh` seeds `Host github.com` **only if it is missing**. If that block already has `HostName ssh.github.com` (or a GitHub Enterprise name), install leaves it. `IdentityAgent` and `IdentitiesOnly` are not function arguments.
 
 ```bash
-mkdir -p ~/.ssh && chmod 700 ~/.ssh
-ssh-add -L | grep -i 'home-personal' > ~/.ssh/home-personal.pub
-chmod 644 ~/.ssh/home-personal.pub
-\cat ~/.ssh/home-personal.pub | ssh-keygen -lf -   # note SHA256:…
-chezmoi apply   # injects IdentityFile ~/.ssh/home-personal.pub under Host github.com
+ssh-host-local github.com github.com git          # skipped by install.sh if Host github.com exists
+ssh-host-local vps YOUR_IP_OR_DNS YOUR_REMOTE_USER
+ssh-host-local xpto example.com alice
+```
+
+Then bind a Bitwarden SSH-item comment to that Host:
+
+```bash
+ssh-pub github.com home-personal    # → ~/.ssh/home-personal.pub + IdentityFile
+ssh-pub vps vps
+ssh-pub xpto xpto                   # errors if Host xpto is missing
+```
+
+`ssh-pub` is idempotent when the `.pub` and `IdentityFile` already match. It runs `chezmoi apply` when it actually writes `home-personal` or `work` (git signing templates).
+
+### Extra GitHub accounts / orgs
+
+`github.com` and `github.com-acme` are different Host aliases. Both can use `HostName github.com` with different keys. Remotes must use the alias, not `git@github.com`, or SSH would pick the `Host github.com` key.
+
+```bash
+ssh-host-local github.com github.com git
+ssh-pub github.com home-personal
+
+ssh-host-local github.com-acme github.com git
+ssh-pub github.com-acme acme
+
+ssh-host-local github.com-work github.com git
+ssh-pub github.com-work work
+
+git clone git@github.com-acme:acme/repo.git
+# git remote set-url origin git@github.com-acme:acme/repo.git
+```
+
+GitHub over 443 / Enterprise — change only `<hostname>` (and keep `Port` if you add it; `ssh-host-local` will not drop it):
+
+```bash
+ssh-host-local github.com ssh.github.com git
+ssh-host-local ghe github.mycompany.com git
+ssh-pub ghe work
+```
+
+### GitHub (`ssh git@github.com` + commit signing)
+
+Private key only in Bitwarden (New item → **SSH key**: import or generate Ed25519). Name the item so the agent comment matches, e.g. `home-personal`.
+
+```bash
+ssh-host-local github.com github.com git   # skip if install.sh already seeded it
+ssh-pub github.com home-personal
+\cat ~/.ssh/home-personal.pub              # paste this line on GitHub
 ```
 
 On GitHub → Settings → SSH and GPG keys, paste that same line twice:
@@ -177,7 +223,7 @@ ssh -T git@github.com
 # exit status 1 is normal (no shell)
 ```
 
-If it still fails, `ssh -o IdentitiesOnly=no -T git@github.com` tests the agent without the `.pub`. After `home-personal.pub` exists, drop the `-o`.
+If it still fails, `ssh -o IdentitiesOnly=no -T git@github.com` tests the agent without the `.pub`. After `ssh-pub`, drop the `-o`.
 
 Until the agent is unlocked: `git commit --no-gpg-sign`.
 
@@ -186,24 +232,9 @@ Until the agent is unlocked: `git commit --no-gpg-sign`.
 Use a **separate** Bitwarden SSH-key item (e.g. `vps`), not `home-personal`, unless that exact public key is also in the server `authorized_keys`.
 
 ```bash
-ssh-add -L | grep -i vps > ~/.ssh/vps.pub
-chmod 644 ~/.ssh/vps.pub
-chezmoi apply   # injects IdentityFile ~/.ssh/vps.pub under Host vps
+ssh-host-local vps YOUR_IP_OR_DNS YOUR_REMOTE_USER
+ssh-pub vps vps
 ```
-
-HostName and User are **not** in git. `~/.ssh/config.local` (gitignored):
-
-```bash
-touch ~/.ssh/config.local && chmod 600 ~/.ssh/config.local
-```
-
-```
-Host vps
-  HostName YOUR_IP_OR_DNS
-  User YOUR_REMOTE_USER
-```
-
-`Include config.local` merges this with the chezmoi `Host vps` block (agent + `IdentitiesOnly` + `vps.pub`).
 
 Install the **same** public line on the server (`~/.ssh/authorized_keys` for that User), then:
 
@@ -211,7 +242,7 @@ Install the **same** public line on the server (`~/.ssh/authorized_keys` for tha
 ssh vps
 ```
 
-Bitwarden must be unlocked; **Allow** if the agent prompts. `install.sh` may copy a legacy `vps_srv1938886.pub` → `vps.pub` when present. Delete leftover **private** key files from `~/.ssh/` after import.
+Bitwarden must be unlocked; **Allow** if the agent prompts. `install.sh` may copy a legacy `vps_srv1938886.pub` → `vps.pub` when present. It will not overwrite an existing `Host vps` HostName/User. Delete leftover **private** key files from `~/.ssh/` after import.
 
 ## WezTerm (Windows → WSL:arch)
 
