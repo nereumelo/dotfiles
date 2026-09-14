@@ -43,6 +43,7 @@ for f in \
   "$HOME/.config/bash/functions.sh" \
   "$HOME/.config/starship.toml" \
   "$HOME/.config/wezterm/wezterm.lua" \
+  "$HOME/.local/share/applications/org.wezfurlong.wezterm.desktop" \
   "$HOME/.config/herdr/config.toml" \
   "$HOME/.config/mise/config.toml" \
   "$HOME/.config/nvim/init.lua" \
