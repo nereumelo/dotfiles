@@ -103,11 +103,31 @@ if [[ -x "$HOME/.local/bin/windows-open" ]]; then
 else
   soft "windows-open missing (chezmoi apply?)"
 fi
+if grep -qE '^copy\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; then
+  ok "copy() in functions.sh"
+else
+  soft "copy() missing — chezmoi apply?"
+fi
+if grep -qE '^open\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; then
+  ok "open() in functions.sh"
+else
+  soft "open() missing — chezmoi apply?"
+fi
 if [[ -x /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe ]] \
   || [[ -x /mnt/c/Windows/System32/cmd.exe ]]; then
   ok "Windows interop (powershell/cmd under /mnt/c/Windows)"
 else
   soft "no powershell.exe/cmd.exe under /mnt/c/Windows — WSL interop off?"
+fi
+if [[ -x /mnt/c/Windows/System32/clip.exe ]] || [[ -x /mnt/c/Windows/Sysnative/clip.exe ]]; then
+  ok "clip.exe under /mnt/c/Windows"
+else
+  soft "no clip.exe under /mnt/c/Windows — copy() needs WSL interop"
+fi
+if [[ -x /mnt/c/Windows/explorer.exe ]] || [[ -x /mnt/c/Windows/System32/explorer.exe ]]; then
+  ok "explorer.exe under /mnt/c/Windows"
+else
+  soft "no explorer.exe under /mnt/c/Windows — open() needs WSL interop"
 fi
 
 echo

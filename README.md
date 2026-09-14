@@ -257,6 +257,11 @@ WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFI
 
 CLI tools (`claude`, `gh`, `xdg-open`) cannot see `cmd.exe` because `appendWindowsPath=false`. `~/.local/bin/windows-open` (and an `xdg-open` shim) call Windows PowerShell `Start-Process`. `BROWSER` / `GH_BROWSER` point at that script after a new shell (`chezmoi apply`).
 
+Interactive bash helpers in `~/.config/bash/functions.sh` (same reason — no `clip.exe` / `explorer.exe` on PATH):
+
+- `copy` — Windows clipboard. Detects the source encoding (`file --mime-encoding`) and feeds `clip.exe` UTF-16LE with BOM so UTF-8 is not mangled as OEM text. `copy readme.md` or `cat readme.md | copy` (`cat` is `bat -p`; `copy` reads stdin/`command cat`, not bat).
+- `open` — Windows Explorer. `open` / `open .` is the current directory; `open ~/me/dotfiles` that folder. A file path uses `explorer /select,` so Explorer highlights it.
+
 `theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling clipboard or hyperlink keybinds, copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
 
 Do not install or launch Linux/WSLg `wezterm`.
