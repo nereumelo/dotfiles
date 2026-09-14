@@ -16,6 +16,7 @@ nvim = "tokyonight"
 nvim_style = "night"
 bat = "tokyonight_night"
 starship = "tokyo-night"
+opencode = "tokyonight"
 
 [themes.catppuccin]
 herdr = "catppuccin"
@@ -23,3 +24,4 @@ nvim = "tokyonight"
 nvim_style = "night"
 bat = "Catppuccin Mocha"
 starship = "catppuccin"
+opencode = "catppuccin"

@@ -1,6 +1,15 @@
 # ble.sh config — fzf via ble contrib; atuin after fzf so C-r is atuin.
 # Do NOT eval "$(fzf --bash)" directly (conflicts with ble keybindings).
 
+# TAB complete + auto-complete (ghost text) follow this readline var.
+bind 'set completion-ignore-case on'
+
+# Allow rewriting the typed prefix when case differs (docu → Documents).
+_ble_complete_case_insensitive() {
+  bleopt complete_allow_reduction=1
+}
+blehook/eval-after-load complete _ble_complete_case_insensitive
+
 ble-import -d integration/fzf-completion
 ble-import -d integration/fzf-key-bindings
 ble-import -C 'eval "$(atuin init bash)"' integration/fzf-key-bindings
