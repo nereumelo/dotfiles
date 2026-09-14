@@ -28,8 +28,10 @@ dotfiles/
 | `private_dot_config/bash/` | `~/.config/bash/` |
 | `private_dot_config/git/config-work.tmpl` | `~/.config/git/config-work` |
 | `private_dot_config/nvim/` | `~/.config/nvim/` |
+| `private_dot_config/wezterm/` | `~/.config/wezterm/` |
 | `private_dot_ssh/config.tmpl` | `~/.ssh/config` |
 | `dot_local/bin/executable_theme` | `~/.local/bin/theme` |
+| `dot_local/share/applications/org.wezfurlong.wezterm.desktop` | `~/.local/share/applications/org.wezfurlong.wezterm.desktop` |
 
 `install.sh` owns packages. Chezmoi never installs packages.
 
@@ -116,6 +118,12 @@ Sudo only for system pacman, system units, usermod, chsh. Bootstrap grants passw
 8. Until the agent is ready: `git commit --no-gpg-sign`
 
 Bitwarden vault syncs via your account across Windows/Arch clients. Enable the SSH agent in the **Arch** desktop app. Do not bridge Windows `npiperelay` into WSL for this setup.
+
+## WezTerm (WSLg)
+
+Arch `wezterm` on WSLg does not use Wayland. `enable_wayland = false` plus `window_decorations = "TITLE | RESIZE"` keep a normal X11/Win32 frame (the Start menu shortcut otherwise stays on Wayland and becomes a borderless panel). `~/.local/share/applications/org.wezfurlong.wezterm.desktop` launches with `WAYLAND_DISPLAY=` and `LIBGL_ALWAYS_SOFTWARE=1` so **Start → WezTerm (arch)** matches a working CLI. `vulkan-icd-loader` and `vulkan-swrast` are in `packages/pacman.txt`. After apply: `wsl --shutdown` once if the old shortcut is cached.
+
+Do not set nightly-only keys such as `mux_enable_ssh_agent` on extra/wezterm — unknown `config_builder()` fields abort startup.
 
 ## Themes
 
