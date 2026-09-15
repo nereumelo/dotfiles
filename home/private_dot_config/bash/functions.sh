@@ -173,6 +173,11 @@ open() {
 # HostName/User/IdentityAgent/IdentitiesOnly live in ~/.ssh/config.local (not git).
 # IdentityFile lives in ~/.ssh/config.identity and is inlined into ~/.ssh/config
 # by chezmoi (ssh-pub). One Host alias per block.
+#
+# IdentityFile is the key *stem* (~/.ssh/home-personal), not the .pub. OpenSSH
+# loads ~/.ssh/<key>.pub as the public half and matches the Bitwarden agent.
+# Pointing IdentityFile at a 0644 .pub makes ssh treat that path as a private
+# key: "UNPROTECTED PRIVATE KEY FILE" / "bad permissions" / Permission denied.
 
 # Tilde is for OpenSSH config (IdentityAgent ~/.bitwarden-ssh-agent.sock), not bash expansion.
 # shellcheck disable=SC2088
@@ -262,7 +267,21 @@ _ssh_expand_identity_path() {
   p="${p#\'}"
   p="${p%\'}"
   if [[ "$p" == "~/"* ]]; then
-    printf '%s\n' "${HOME}/${p#~/}"
+    printf '%s\n' "${HOME}/${p#"~/"}"
+  else
+    printf '%s\n' "$p"
+  fi
+}
+
+# OpenSSH IdentityFile should be ~/.ssh/<key> (it auto-loads <key>.pub).
+_ssh_identity_stem() {
+  local p="$1"
+  p="${p#\"}"
+  p="${p%\"}"
+  p="${p#\'}"
+  p="${p%\'}"
+  if [[ "$p" == *.pub ]]; then
+    printf '%s\n' "${p%.pub}"
   else
     printf '%s\n' "$p"
   fi
@@ -276,7 +295,14 @@ _ssh_identity_points_to() {
     have="$(_ssh_local_field "$host" IdentityFile || true)"
   fi
   [[ -n "$have" ]] || return 1
-  [[ "$(_ssh_expand_identity_path "$have")" == "$(_ssh_expand_identity_path "$want")" ]]
+  [[ "$(_ssh_expand_identity_path "$(_ssh_identity_stem "$have")")" == \
+     "$(_ssh_expand_identity_path "$(_ssh_identity_stem "$want")")" ]]
+}
+
+_ssh_pub_ok() {
+  local f="$1"
+  [[ -f "$f" ]] || return 1
+  command ssh-keygen -lf "$f" >/dev/null 2>&1
 }
 
 # MODE=setup  host hostname user — set HostName/User + agent defaults (no IdentityFile)
@@ -521,8 +547,10 @@ _ssh_ensure_host_agent() {
 
 # IdentityFile goes in ~/.ssh/config.identity (inlined into ~/.ssh/config).
 # Also drop a leftover IdentityFile from config.local so Include does not win.
+# Always store the stem (~/.ssh/<key>), never the .pub path.
 _ssh_set_identity_file() {
   local host="$1" identity_file="$2"
+  identity_file="$(_ssh_identity_stem "$identity_file")"
   _ssh_rewrite_identity_host "$host" "$identity_file" || return
   if _ssh_host_in_local "$host"; then
     _ssh_rewrite_local_host agent "$host" || true
@@ -531,12 +559,16 @@ _ssh_set_identity_file() {
 
 _ssh_set_identity_file_if_missing() {
   local host="$1" identity_file="$2"
+  identity_file="$(_ssh_identity_stem "$identity_file")"
   _ssh_host_in_local "$host" || return 0
   local from_idf from_local
   from_idf="$(_ssh_local_field "$host" IdentityFile "$(_ssh_config_identity)" || true)"
   from_local="$(_ssh_local_field "$host" IdentityFile || true)"
   if [[ -n "$from_idf" ]]; then
-    if [[ -n "$from_local" ]]; then
+    # Rewrite leftover IdentityFile ~/.ssh/<key>.pub → ~/.ssh/<key>
+    if [[ "$from_idf" == *.pub ]] && _ssh_identity_points_to "$host" "$identity_file"; then
+      _ssh_set_identity_file "$host" "$identity_file"
+    elif [[ -n "$from_local" ]]; then
       _ssh_rewrite_local_host agent "$host" || true
     fi
     return 0
@@ -546,6 +578,29 @@ _ssh_set_identity_file_if_missing() {
     return 0
   fi
   _ssh_set_identity_file "$host" "$identity_file"
+}
+
+# Rewrite IdentityFile ~/.ssh/foo.pub → ~/.ssh/foo in config.identity.
+_ssh_migrate_identity_stems() {
+  local f host idf
+  f="$(_ssh_config_identity)"
+  [[ -f "$f" ]] || return 0
+  while read -r host; do
+    [[ -n "$host" ]] || continue
+    idf="$(_ssh_local_field "$host" IdentityFile "$f" || true)"
+    [[ "$idf" == *.pub ]] || continue
+    _ssh_rewrite_identity_host "$host" "$(_ssh_identity_stem "$idf")" || true
+  done < <(awk '
+    {
+      sub(/\r$/, "")
+    }
+    $1 == "Host" {
+      for (i = 2; i <= NF; i++) {
+        if ($i == "" || $i ~ /^#/) break
+        print $i
+      }
+    }
+  ' "$f")
 }
 
 # Create Host only if missing. Existing HostName/User (ssh.github.com, GHE, …) are kept.
@@ -562,8 +617,9 @@ _ssh_seed_host() {
 ssh-pub() {
   if [[ $# -ne 2 ]]; then
     printf 'usage: ssh-pub <host> <key>\n' >&2
-    printf 'Writes ~/.ssh/<key>.pub from the agent and IdentityFile on Host <host>\n' >&2
-    printf 'into ~/.ssh/config (via config.identity + chezmoi). Host must exist in config.local.\n' >&2
+    printf 'Writes ~/.ssh/<key>.pub from the agent and IdentityFile ~/.ssh/<key>\n' >&2
+    printf 'on Host <host> into ~/.ssh/config (via config.identity + chezmoi).\n' >&2
+    printf 'Host must exist in config.local. IdentityFile is the stem, not the .pub.\n' >&2
     return 2
   fi
   local host="$1" key="$2"
@@ -573,6 +629,7 @@ ssh-pub() {
     return 2
   fi
   _ssh_ensure_config_local || return
+  _ssh_migrate_identity_stems
   if ! _ssh_host_in_local "$host"; then
     printf 'ssh-pub: host %s is not in ~/.ssh/config.local\n' "$host" >&2
     printf 'Set it up first: ssh-host-local %s <hostname> <user>\n' "$host" >&2
@@ -587,7 +644,7 @@ ssh-pub() {
   local old_sock="${SSH_AUTH_SOCK:-}"
   export SSH_AUTH_SOCK="$sock"
 
-  local lines matches exact chosen count dest want
+  local lines matches exact chosen count dest want have
   if ! lines="$(ssh-add -L 2>/dev/null)"; then
     [[ -n "$old_sock" ]] && export SSH_AUTH_SOCK="$old_sock"
     printf 'ssh-pub: ssh-add -L failed (unlock Bitwarden and Allow the agent prompt)\n' >&2
@@ -617,16 +674,29 @@ ssh-pub() {
   chosen="$matches"
 
   dest="${HOME}/.ssh/${key}.pub"
+  # OpenSSH IdentityFile is the stem; it loads ~/.ssh/<key>.pub itself.
+  # Pointing IdentityFile at the .pub makes 0644 look like an unprotected private key.
   # shellcheck disable=SC2088
-  want="~/.ssh/${key}.pub"
+  want="~/.ssh/${key}"
 
-  if [[ -f "$dest" ]] && cmp -s <(printf '%s\n' "$chosen") "$dest" && _ssh_identity_points_to "$host" "$want"; then
+  if [[ -f "$dest" ]] && cmp -s <(printf '%s\n' "$chosen") "$dest" && _ssh_pub_ok "$dest" && _ssh_identity_points_to "$host" "$want"; then
+    have="$(_ssh_local_field "$host" IdentityFile "$(_ssh_config_identity)" || true)"
+    if [[ "$have" == *.pub ]]; then
+      _ssh_set_identity_file "$host" "$want" || return
+      if command -v chezmoi >/dev/null 2>&1; then
+        chezmoi apply || true
+      fi
+    fi
     printf 'ssh-pub: %s already on Host %s\n' "$dest" "$host"
     return 0
   fi
 
   printf '%s\n' "$chosen" >"$dest"
   chmod 644 "$dest"
+  if ! _ssh_pub_ok "$dest"; then
+    printf 'ssh-pub: wrote %s but ssh-keygen does not accept it as a public key\n' "$dest" >&2
+    return 1
+  fi
   # OpenSSH expands ~ in IdentityFile; do not use $HOME here.
   # shellcheck disable=SC2088
   _ssh_set_identity_file "$host" "$want" || return
@@ -635,8 +705,6 @@ ssh-pub() {
     chezmoi apply || printf 'ssh-pub: wrote the key; chezmoi apply failed (config IdentityFile / git signing)\n' >&2
   fi
 
-  printf 'Wrote %s and IdentityFile on Host %s\n' "$dest" "$host"
-  if command -v ssh-keygen >/dev/null 2>&1; then
-    command ssh-keygen -lf "$dest"
-  fi
+  printf 'Wrote %s and IdentityFile %s on Host %s\n' "$dest" "$want" "$host"
+  command ssh-keygen -lf "$dest"
 }

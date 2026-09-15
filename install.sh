@@ -232,10 +232,17 @@ _ssh_ensure_config_local
 # Seed Host github.com only if missing. Existing HostName/User stay
 # (ssh.github.com, GitHub Enterprise, already-customized aliases).
 _ssh_seed_host github.com github.com git
+# IdentityFile is the stem (~/.ssh/home-personal). OpenSSH loads the .pub.
+# A 0644 IdentityFile .pub is ignored as an "unprotected private key".
+_ssh_migrate_identity_stems
 # OpenSSH expands ~ in IdentityFile; do not use $HOME here.
 # shellcheck disable=SC2088
 if [[ -f "$HOME/.ssh/home-personal.pub" ]]; then
-  _ssh_set_identity_file_if_missing github.com "~/.ssh/home-personal.pub"
+  if _ssh_pub_ok "$HOME/.ssh/home-personal.pub"; then
+    _ssh_set_identity_file_if_missing github.com "~/.ssh/home-personal"
+  else
+    warn "home-personal.pub is not a valid OpenSSH public key — skip IdentityFile (fix with: ssh-pub github.com home-personal)"
+  fi
 fi
 
 # Create Host vps from leftover config if missing; never clobber an existing HostName.
@@ -256,11 +263,19 @@ elif [[ -n "$vps_hn" && -n "$vps_user" ]]; then
 fi
 if [[ -f "$HOME/.ssh/vps.pub" ]]; then
   # shellcheck disable=SC2088
-  _ssh_set_identity_file_if_missing vps "~/.ssh/vps.pub"
+  if _ssh_pub_ok "$HOME/.ssh/vps.pub"; then
+    _ssh_set_identity_file_if_missing vps "~/.ssh/vps"
+  else
+    warn "vps.pub is not a valid OpenSSH public key — skip IdentityFile (fix with: ssh-pub vps vps)"
+  fi
 fi
 if [[ -f "$HOME/.ssh/work.pub" ]]; then
   # shellcheck disable=SC2088
-  _ssh_set_identity_file_if_missing github.com-work "~/.ssh/work.pub"
+  if _ssh_pub_ok "$HOME/.ssh/work.pub"; then
+    _ssh_set_identity_file_if_missing github.com-work "~/.ssh/work"
+  else
+    warn "work.pub is not a valid OpenSSH public key — skip IdentityFile (fix with: ssh-pub github.com-work work)"
+  fi
 fi
 
 # --- Backup ---

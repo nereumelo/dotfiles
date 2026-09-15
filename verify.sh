@@ -99,10 +99,19 @@ else
   soft "config.local missing Host github.com — ssh-host-local github.com github.com git"
 fi
 if [[ -f "$HOME/.ssh/home-personal.pub" ]]; then
+  if ssh-keygen -lf "$HOME/.ssh/home-personal.pub" >/dev/null 2>&1; then
+    ok "home-personal.pub is a valid OpenSSH public key"
+  else
+    soft "home-personal.pub is not a valid public key — OpenSSH then treats IdentityFile as a private key (UNPROTECTED PRIVATE KEY FILE if 0644). Fix: ssh-pub github.com home-personal"
+  fi
   if grep -qE '^[[:space:]]*IdentityFile[[:space:]]+' "$HOME/.ssh/config" 2>/dev/null; then
     ok "IdentityFile in ~/.ssh/config (ssh-pub)"
   else
     soft "home-personal.pub present but IdentityFile not in ~/.ssh/config — ssh-pub github.com home-personal"
+  fi
+  if grep -qE '^[[:space:]]*IdentityFile[[:space:]].*\.pub([[:space:]]|$)' "$HOME/.ssh/config" 2>/dev/null \
+    || grep -qE '^[[:space:]]*IdentityFile[[:space:]].*\.pub([[:space:]]|$)' "$HOME/.ssh/config.identity" 2>/dev/null; then
+    soft "IdentityFile points at a .pub — OpenSSH loads that path as a private key (0644 → ignored). Re-run: ssh-pub github.com home-personal"
   fi
   if grep -qE '^[[:space:]]*IdentityFile[[:space:]]+' "$HOME/.ssh/config.local" 2>/dev/null; then
     soft "IdentityFile still in config.local — ssh-pub to move it into config"

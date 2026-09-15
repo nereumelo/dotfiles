@@ -31,7 +31,7 @@ dotfiles/
 | `private_dot_config/git/config-work.tmpl` | `~/.config/git/config-work` |
 | `private_dot_config/nvim/` | `~/.config/nvim/` |
 | `private_dot_config/opencode/tui.json.tmpl` | `~/.config/opencode/tui.json` |
-| `private_dot_ssh/config.tmpl` | `~/.ssh/config` (`Include config.local`, then `IdentityFile` from `ssh-pub`) |
+| `private_dot_ssh/config.tmpl` | `~/.ssh/config` (`Include config.local`, then `IdentityFile ~/.ssh/<key>` from `ssh-pub`) |
 | `dot_local/bin/executable_theme` | `~/.local/bin/theme` |
 | `dot_local/bin/executable_windows-open` | `~/.local/bin/windows-open` (`xdg-open` shim too) |
 
@@ -132,7 +132,8 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 - `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
 - SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK=~/.bitwarden-ssh-agent.sock`
 - `~/.ssh/config` is chezmoi-managed. It `Include`s gitignored `~/.ssh/config.local` (`HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`) and then inlines `IdentityFile` from `~/.ssh/config.identity` (`ssh-pub`). HostName/User are not in git.
-- `ssh-host-local <host> <hostname> <user>` writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing
+- `ssh-host-local <host> <hostname> <user>` writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile ~/.ssh/<key>` (the stem, not the `.pub`) on `~/.ssh/config` — it errors if the Host is missing
+- OpenSSH loads `~/.ssh/<key>.pub` next to that stem. Do **not** set `IdentityFile` to the `.pub`: ssh treats that path as a private key, and a 0644 `.pub` is ignored (`UNPROTECTED PRIVATE KEY FILE` / `bad permissions` / `Permission denied (publickey)`)
 - Without that `.pub` on disk, OpenSSH `IdentitiesOnly` ignores the agent (`identity file … type -1`, never `Offering public key`)
 - Private keys stay in the **Arch** Bitwarden desktop SSH agent. There is no headless Bitwarden SSH daemon — the app must stay open and unlocked. `bw` CLI cannot sign SSH
 - Site passwords (browser) are the Windows Bitwarden extension / same account; they are not this socket
@@ -170,12 +171,12 @@ ssh-host-local xpto example.com alice
 Then bind a Bitwarden SSH-item comment to that Host:
 
 ```bash
-ssh-pub github.com home-personal    # → ~/.ssh/home-personal.pub + IdentityFile in ~/.ssh/config
+ssh-pub github.com home-personal    # → ~/.ssh/home-personal.pub + IdentityFile ~/.ssh/home-personal
 ssh-pub vps vps
 ssh-pub xpto xpto                   # errors if Host xpto is missing
 ```
 
-`ssh-pub` is idempotent when the `.pub` and `IdentityFile` already match. It writes `IdentityFile` via `~/.ssh/config.identity` and runs `chezmoi apply` so `~/.ssh/config` shows the key (and git signing templates for `home-personal` / `work`).
+`ssh-pub` is idempotent when the `.pub` and stem `IdentityFile` already match. It writes `IdentityFile` via `~/.ssh/config.identity` and runs `chezmoi apply` so `~/.ssh/config` shows the key (and git signing templates for `home-personal` / `work`). Re-run it to rewrite a leftover `IdentityFile ~/.ssh/<key>.pub`.
 
 ### Extra GitHub accounts / orgs
 
@@ -227,6 +228,23 @@ ssh -T git@github.com
 ```
 
 If it still fails, `ssh -o IdentitiesOnly=no -T git@github.com` tests the agent without the `.pub`. After `ssh-pub`, drop the `-o`.
+
+### `UNPROTECTED PRIVATE KEY FILE` / `Permission denied (publickey)`
+
+That warning means OpenSSH tried to load `IdentityFile` as a **private** key and the file was group/world-readable (typical 0644 on a `.pub`). It then skipped the identity and GitHub returned `Permission denied (publickey)`.
+
+Usual cause: `IdentityFile ~/.ssh/home-personal.pub` (or that `.pub` is empty / UTF-16 / not an OpenSSH public key, so `identity file … type -1`).
+
+```bash
+ssh-keygen -lf ~/.ssh/home-personal.pub   # must print a fingerprint
+ssh-pub github.com home-personal          # rewrite a valid .pub + IdentityFile ~/.ssh/home-personal
+grep -n IdentityFile ~/.ssh/config ~/.ssh/config.identity
+# want: IdentityFile ~/.ssh/home-personal
+# not:  IdentityFile ~/.ssh/home-personal.pub
+ssh -T git@github.com
+```
+
+Unlock Arch Bitwarden (Allow the agent prompt) so `ssh-add -l` lists the key. `chmod 600` on a real public key only hides the warning; git still needs the agent.
 
 Until the agent is unlocked: `git commit --no-gpg-sign`.
 
