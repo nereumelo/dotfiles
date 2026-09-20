@@ -253,7 +253,8 @@ WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFI
 
 - `default_domain = "WSL:arch"` (WezTerm names WSL domains `WSL:` + `wsl -l` name)
 - `wsl_domains.default_cwd = "~"` so new windows/tabs open in the Linux home, not `C:\Users\...`
-- `wsl_domains.default_prog` starts **herdr** (`bash -lc` so `~/.local/bin` is on PATH). If herdr is missing, login bash. **Ctrl+Shift+L** launcher has a Bash entry for a normal shell
+- `wsl_domains.default_prog` starts **herdr** (`bash -lc` so `~/.local/bin` is on PATH). Herdr is not `exec`'d: **Ctrl+B** then **q** detaches to login bash (`herdr` reattaches). `exit` in that bash closes the pane. If herdr is missing, login bash. **Ctrl+Shift+L** launcher has a Bash entry for a normal shell
+- **Ctrl+Backspace** deletes the previous word (sent as Ctrl+W). Ctrl+Delete already deletes the next word
 - Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, `window_background_opacity = 0.97`, `initial_cols = 102`, `initial_rows = 26`. Neovim (tokyonight `transparent = true`) does not paint a solid `Normal` background, so that WezTerm opacity shows through.
 - Clipboard: select copies; **Ctrl+C** copies when there is a selection (otherwise interrupt); **Ctrl+V** pastes
 - Links: click or **Ctrl+click** opens the Windows default browser (`OpenLinkAtMouseCursor`). Copy-on-select left-click had replaced WezTerm's default, so Ctrl+click did nothing until this binding was restored
@@ -265,7 +266,7 @@ Interactive bash helpers in `~/.config/bash/functions.sh`:
 - `copy` — clipboard via **xclip** (X11) or **wl-copy** (Wayland). WSLg mirrors that to the Windows clipboard. Source encoding is detected (`file --mime-encoding`) and converted to UTF-8 **without a BOM** (a leading U+FEFF was the `clip.exe` UTF-16LE prefix). `copy readme.md` or `cat readme.md | copy` (`cat` is `bat -p`; `copy` reads stdin/`command cat`, not bat). Needs `DISPLAY`/`WAYLAND_DISPLAY` (WSLg).
 - `open` — Windows Explorer (`explorer.exe` is not on PATH). `open` / `open .` is the current directory; `open ~/me/dotfiles` that folder. A file path uses `explorer /select,` so Explorer highlights it.
 
-`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling WezTerm changes (opacity, herdr default, clipboard, hyperlinks), copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
+`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling WezTerm changes (opacity, herdr default, detach-to-bash, Ctrl+Backspace, clipboard, hyperlinks), copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
 
 Do not install or launch Linux/WSLg `wezterm`.
 

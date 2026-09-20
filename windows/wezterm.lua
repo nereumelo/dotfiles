@@ -19,11 +19,13 @@ config.initial_rows = 26
 
 -- New WSL:arch windows/tabs start herdr. default_prog is not an interactive
 -- shell, so ~/.bashrc returns before PATH includes ~/.local/bin — set PATH
--- here. Missing herdr falls back to login bash. Ctrl+Shift+L → Bash.
+-- here. Do not exec herdr: prefix+q (ctrl+b, then q) detaches the client
+-- and must land in login bash (`herdr` reattaches). Missing herdr falls
+-- back to login bash. Ctrl+Shift+L → Bash.
 local herdr_prog = {
   "bash",
   "-lc",
-  [[export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"; command -v herdr >/dev/null && exec herdr; exec bash -l]],
+  [[export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"; command -v herdr >/dev/null && herdr; exec bash -l]],
 }
 
 -- Domain name is "WSL:" + the name from `wsl -l` (must be "arch").
@@ -66,6 +68,19 @@ config.keys = {
     end),
   },
   { key = "v", mods = "CTRL", action = act.PasteFrom("Clipboard") },
+  -- Windows WezTerm sends Ctrl+Backspace as a single-char backspace.
+  -- Ctrl+Delete already kills the next word; map Ctrl+Backspace to Ctrl+W
+  -- (readline/ble.sh unix-word-rubout).
+  {
+    key = "Backspace",
+    mods = "CTRL",
+    action = act.SendKey({ key = "w", mods = "CTRL" }),
+  },
+  {
+    key = "phys:Backspace",
+    mods = "CTRL",
+    action = act.SendKey({ key = "w", mods = "CTRL" }),
+  },
 }
 
 -- Copy on select. Ctrl+click (and click on a hyperlink) opens in the
