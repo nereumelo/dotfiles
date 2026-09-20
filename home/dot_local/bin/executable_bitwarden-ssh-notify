@@ -23,6 +23,9 @@ MAX_MSG = 256 * 1024
 
 _last_alert = 0.0
 _last_lock = threading.Lock()
+SO_PEERCRED = 17  # Linux
+NOTIFY_TITLE = "Bitwarden SSH"
+NOTIFY_BODY = "Authorize the SSH key in Bitwarden Desktop"
 
 
 def recvall(sock: socket.socket, n: int) -> bytes | None:
@@ -48,39 +51,79 @@ def read_agent_frame(sock: socket.socket) -> bytes | None:
     return hdr + body
 
 
-def alert() -> None:
+def peer_pid(sock: socket.socket) -> int | None:
+    try:
+        creds = sock.getsockopt(socket.SOL_SOCKET, SO_PEERCRED, struct.calcsize("3i"))
+    except OSError:
+        return None
+    pid, _uid, _gid = struct.unpack("3i", creds)
+    return pid if pid > 0 else None
+
+
+def write_to_peer_tty(pid: int, payload: bytes) -> None:
+    for fd in (2, 1, 0):
+        try:
+            out = os.open(f"/proc/{pid}/fd/{fd}", os.O_WRONLY | os.O_NOCTTY)
+        except OSError:
+            continue
+        try:
+            os.write(out, payload)
+            return
+        except OSError:
+            continue
+        finally:
+            os.close(out)
+
+
+def wezterm_alert_bytes() -> bytes:
+    # OSC 777 is WezTerm's in-app notification; BEL flashes visual_bell.
+    return (
+        b"\033]777;notify;"
+        + NOTIFY_TITLE.encode()
+        + b";"
+        + NOTIFY_BODY.encode()
+        + b"\033\\\a"
+    )
+
+
+def raise_bitwarden() -> None:
+    display = os.environ.get("DISPLAY") or ":0"
+    xdotool = "/usr/bin/xdotool"
+    if not os.access(xdotool, os.X_OK):
+        return
+    env = os.environ.copy()
+    env["DISPLAY"] = display
+    subprocess.Popen(
+        [
+            xdotool,
+            "search",
+            "--onlyvisible",
+            "--class",
+            "bitwarden",
+            "windowactivate",
+            "windowraise",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    )
+
+
+def alert(client: socket.socket | None = None, *, force: bool = False) -> None:
     global _last_alert
     now = time.monotonic()
     with _last_lock:
-        if now - _last_alert < DEBOUNCE_SEC:
+        if not force and now - _last_alert < DEBOUNCE_SEC:
             return
         _last_alert = now
-    notify = os.path.join(HOME, ".local", "bin", "windows-notify")
-    if os.access(notify, os.X_OK):
-        subprocess.Popen(
-            [notify, "Bitwarden SSH", "Authorize the SSH key in Bitwarden Desktop"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    display = os.environ.get("DISPLAY") or ":0"
-    xdotool = "/usr/bin/xdotool"
-    if os.access(xdotool, os.X_OK):
-        env = os.environ.copy()
-        env["DISPLAY"] = display
-        subprocess.Popen(
-            [
-                xdotool,
-                "search",
-                "--onlyvisible",
-                "--class",
-                "bitwarden",
-                "windowactivate",
-                "windowraise",
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=env,
-        )
+    payload = wezterm_alert_bytes()
+    pid = peer_pid(client) if client is not None else None
+    if pid:
+        write_to_peer_tty(pid, payload)
+    elif sys.stdout.isatty():
+        sys.stdout.buffer.write(payload)
+        sys.stdout.buffer.flush()
+    raise_bitwarden()
 
 
 def pipe_backend_to_client(backend: socket.socket, client: socket.socket) -> None:
@@ -118,7 +161,7 @@ def handle_client(client: socket.socket) -> None:
             if frame is None:
                 break
             if len(frame) >= 5 and frame[4] == SSH2_AGENTC_SIGN_REQUEST:
-                alert()
+                alert(client)
             backend.sendall(frame)
         t.join(timeout=2)
     except OSError:
@@ -136,7 +179,7 @@ def handle_client(client: socket.socket) -> None:
 
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] in ("--test", "-t"):
-        alert()
+        alert(None, force=True)
         return 0
 
     os.makedirs(HOME, exist_ok=True)

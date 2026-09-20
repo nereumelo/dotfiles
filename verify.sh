@@ -59,7 +59,6 @@ for f in \
   "$HOME/.config/opencode/tui.json" \
   "$HOME/.local/bin/theme" \
   "$HOME/.local/bin/windows-open" \
-  "$HOME/.local/bin/windows-notify" \
   "$HOME/.local/bin/bitwarden-ssh-notify" \
   "$HOME/.local/bin/xdg-open"
 do
