@@ -1,0 +1,14 @@
+[Unit]
+Description=Windows toast when Bitwarden asks to authorize an SSH key
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/bitwarden-ssh-notify
+Restart=on-failure
+RestartSec=3
+# WSLg; xdotool uses this to raise the Bitwarden window.
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=default.target

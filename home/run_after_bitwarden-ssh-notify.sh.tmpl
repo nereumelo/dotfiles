@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Point SSH IdentityAgent at the notify proxy and start the user unit.
+set -euo pipefail
+
+old='IdentityAgent ~/.bitwarden-ssh-agent.sock'
+new='IdentityAgent ~/.bitwarden-ssh-agent-notify.sock'
+localf="${HOME}/.ssh/config.local"
+if [[ -f "$localf" ]] && grep -qF "$old" "$localf"; then
+  tmp="$(mktemp "${localf}.XXXXXX")"
+  sed "s|${old}|${new}|" "$localf" >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$localf"
+fi
+
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  systemctl --user daemon-reload
+  systemctl --user enable --now bitwarden-ssh-notify.service >/dev/null 2>&1 || true
+fi

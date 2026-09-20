@@ -17,6 +17,17 @@ config.window_padding = { left = 4, right = 4, top = 2, bottom = 2 }
 config.initial_cols = 102
 config.initial_rows = 26
 
+-- Flash + beep when a pane sends BEL (Bitwarden SSH notify proxy).
+config.audible_bell = "SystemBeep"
+config.visual_bell = {
+  fade_in_function = "EaseIn",
+  fade_in_duration_ms = 120,
+  fade_out_function = "EaseOut",
+  fade_out_duration_ms = 180,
+}
+config.colors = { visual_bell = "#7aa2f7" }
+config.notification_handling = "AlwaysShow"
+
 -- New WSL:arch windows/tabs start herdr. default_prog is not an interactive
 -- shell, so ~/.bashrc returns before PATH includes ~/.local/bin — set PATH
 -- here. Do not exec herdr: prefix+q (ctrl+b, then q) detaches the client

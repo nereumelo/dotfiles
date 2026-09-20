@@ -130,9 +130,9 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 
 - Personal identity from `.chezmoidata.toml`; work via `includeIf "gitdir:~/work/"` → `~/.config/git/config-work`
 - `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
-- SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK=~/.bitwarden-ssh-agent.sock`
+- SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK` → `~/.bitwarden-ssh-agent-notify.sock` (proxy) → `~/.bitwarden-ssh-agent.sock`
 - `~/.ssh/config` is chezmoi-managed. It `Include`s gitignored `~/.ssh/config.local` (`HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`) and then inlines `IdentityFile` from `~/.ssh/config.identity` (`ssh-pub`). HostName/User are not in git.
-- `ssh-host-local <host> <hostname> <user>` writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing
+- `ssh-host-local <host> <hostname> <user>` writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent-notify.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing
 - Without that `.pub` on disk, OpenSSH `IdentitiesOnly` ignores the agent (`identity file … type -1`, never `Offering public key`)
 - Private keys stay in the **Arch** Bitwarden desktop SSH agent. There is no headless Bitwarden SSH daemon — the app must stay open and unlocked. `bw` CLI cannot sign SSH
 - Site passwords (browser) are the Windows Bitwarden extension / same account; they are not this socket
@@ -148,12 +148,14 @@ Bitwarden vault syncs via your account across Windows/Arch clients. Enable the S
 3. Confirm the socket and that keys appear after you import them:
 
 ```bash
-echo "$SSH_AUTH_SOCK"    # ~/.bitwarden-ssh-agent.sock
-ls -l ~/.bitwarden-ssh-agent.sock
+echo "$SSH_AUTH_SOCK"    # ~/.bitwarden-ssh-agent-notify.sock when the proxy is up
+ls -l ~/.bitwarden-ssh-agent.sock ~/.bitwarden-ssh-agent-notify.sock
 ssh-add -l               # empty until SSH-key items exist and the vault is unlocked
 ```
 
 `agent refused operation` means the desktop refused to sign: bring the Bitwarden window forward and **Allow**, or disable per-use confirmation in SSH-agent settings. WSLg often hides that prompt.
+
+Bitwarden has no OS notification for SSH authorization. `bitwarden-ssh-notify` proxies the agent socket: a **sign** request writes BEL + OSC 777 into the waiting WezTerm pane (flash, beep, WezTerm notification) and tries to `xdotool` the Bitwarden window forward. `chezmoi apply` enables the systemd user unit. Copy `windows/wezterm.lua` for `visual_bell`. Test in WezTerm: `bitwarden-ssh-notify --test`.
 
 ### Hosts in `config.local`
 
@@ -255,6 +257,7 @@ WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFI
 - `wsl_domains.default_cwd = "~"` so new windows/tabs open in the Linux home, not `C:\Users\...`
 - `wsl_domains.default_prog` starts **herdr** (`bash -lc` so `~/.local/bin` is on PATH). Herdr is not `exec`'d: **Ctrl+B** then **q** detaches to login bash (`herdr` reattaches). `exit` in that bash closes the pane. If herdr is missing, login bash. **Ctrl+Shift+L** launcher has a Bash entry for a normal shell
 - **Ctrl+Backspace** deletes the previous word (sent as Ctrl+W). Ctrl+Delete already deletes the next word
+- `visual_bell` + `notification_handling = AlwaysShow`: Bitwarden SSH sign-request proxy flashes the pane and shows a WezTerm notification (OSC 777)
 - Tokyo Night, JetBrainsMono Nerd Font, `hide_tab_bar_if_only_one_tab`, `window_background_opacity = 0.97`, `initial_cols = 102`, `initial_rows = 26`. Neovim (tokyonight `transparent = true`) does not paint a solid `Normal` background, so that WezTerm opacity shows through.
 - Clipboard: select copies; **Ctrl+C** copies when there is a selection (otherwise interrupt); **Ctrl+V** pastes
 - Links: click or **Ctrl+click** opens the Windows default browser (`OpenLinkAtMouseCursor`). Copy-on-select left-click had replaced WezTerm's default, so Ctrl+click did nothing until this binding was restored
@@ -266,7 +269,7 @@ Interactive bash helpers in `~/.config/bash/functions.sh`:
 - `copy` — clipboard via **xclip** (X11) or **wl-copy** (Wayland). WSLg mirrors that to the Windows clipboard. Source encoding is detected (`file --mime-encoding`) and converted to UTF-8 **without a BOM** (a leading U+FEFF was the `clip.exe` UTF-16LE prefix). `copy readme.md` or `cat readme.md | copy` (`cat` is `bat -p`; `copy` reads stdin/`command cat`, not bat). Needs `DISPLAY`/`WAYLAND_DISPLAY` (WSLg).
 - `open` — Windows Explorer (`explorer.exe` is not on PATH). `open` / `open .` is the current directory; `open ~/me/dotfiles` that folder. A file path uses `explorer /select,` so Explorer highlights it.
 
-`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling WezTerm changes (opacity, herdr default, detach-to-bash, Ctrl+Backspace, clipboard, hyperlinks), copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
+`theme` does not change Windows WezTerm. Edit `windows/wezterm.lua` and re-run `bootstrap.ps1` (or copy the file) if you want a different Windows scheme. After pulling WezTerm changes (opacity, herdr default, detach-to-bash, Ctrl+Backspace, visual_bell, clipboard, hyperlinks), copy `windows/wezterm.lua` over `%USERPROFILE%\.config\wezterm\wezterm.lua` and restart WezTerm.
 
 Do not install or launch Linux/WSLg `wezterm`.
 

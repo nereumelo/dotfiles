@@ -174,9 +174,9 @@ open() {
 # IdentityFile lives in ~/.ssh/config.identity and is inlined into ~/.ssh/config
 # by chezmoi (ssh-pub). One Host alias per block.
 
-# Tilde is for OpenSSH config (IdentityAgent ~/.bitwarden-ssh-agent.sock), not bash expansion.
+# Tilde is for OpenSSH config (IdentityAgent ~/.bitwarden-ssh-agent-notify.sock), not bash expansion.
 # shellcheck disable=SC2088
-_SSH_IDENTITY_AGENT='~/.bitwarden-ssh-agent.sock'
+_SSH_IDENTITY_AGENT='~/.bitwarden-ssh-agent-notify.sock'
 
 _ssh_config_local() {
   printf '%s\n' "${HOME}/.ssh/config.local"
