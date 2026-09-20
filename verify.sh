@@ -59,6 +59,8 @@ for f in \
   "$HOME/.config/opencode/tui.json" \
   "$HOME/.local/bin/theme" \
   "$HOME/.local/bin/windows-open" \
+  "$HOME/.local/bin/windows-notify" \
+  "$HOME/.local/bin/bitwarden-ssh-notify" \
   "$HOME/.local/bin/xdg-open"
 do
   if [[ -e "$f" ]]; then ok "$f"; else soft "missing: $f"; fi
@@ -88,6 +90,13 @@ if [[ -S "$HOME/.bitwarden-ssh-agent.sock" ]]; then
 else
   soft "No socket at ~/.bitwarden-ssh-agent.sock — unlock Arch Bitwarden"
 fi
+if [[ -S "$HOME/.bitwarden-ssh-agent-notify.sock" ]]; then
+  ok "Bitwarden SSH notify proxy socket present"
+else
+  soft "No notify proxy socket — chezmoi apply / systemctl --user enable --now bitwarden-ssh-notify"
+fi
+if have python3; then ok "python3 → $(command -v python3)"; else soft "python3 missing — bitwarden-ssh-notify"; fi
+if have xdotool; then ok "xdotool → $(command -v xdotool)"; else soft "xdotool missing — cannot raise Bitwarden window"; fi
 if [[ -f "$HOME/.ssh/config" ]] && grep -qE '^Include[[:space:]]+config\.local' "$HOME/.ssh/config"; then
   ok "ssh config Includes config.local"
 else

@@ -9,6 +9,8 @@ neovim
 ttf-jetbrains-mono-nerd
 openssh
 bitwarden
+python
+xdotool
 bash-completion
 direnv
 

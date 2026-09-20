@@ -49,7 +49,12 @@ if command -v starship >/dev/null 2>&1; then
 fi
 
 # Bitwarden SSH agent (Linux-native). Unlock Arch Bitwarden before ssh/git.
-export SSH_AUTH_SOCK="${HOME}/.bitwarden-ssh-agent.sock"
+# Notify proxy raises a Windows toast when Bitwarden asks to authorize a key.
+if [[ -S "${HOME}/.bitwarden-ssh-agent-notify.sock" ]]; then
+  export SSH_AUTH_SOCK="${HOME}/.bitwarden-ssh-agent-notify.sock"
+else
+  export SSH_AUTH_SOCK="${HOME}/.bitwarden-ssh-agent.sock"
+fi
 
 # Open OAuth/docs in the Windows browser (appendWindowsPath=false → no cmd.exe on PATH).
 export BROWSER="${HOME}/.local/bin/windows-open"

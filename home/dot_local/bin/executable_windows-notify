@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Raise a Windows toast + beep from WSL (appendWindowsPath=false).
+#   windows-notify [title] [body]
+#   windows-notify --test
+set -euo pipefail
+
+title="${1:-Bitwarden SSH}"
+body="${2:-Authorize the SSH key in Bitwarden Desktop}"
+
+if [[ "${1:-}" == "--test" ]]; then
+  title="Bitwarden SSH"
+  body="Test notification — setup OK"
+fi
+
+windows_exe() {
+  local p
+  for p in "$@"; do
+    if [[ -x "$p" ]]; then
+      printf '%s\n' "$p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+ps="$(windows_exe \
+  /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe \
+  /mnt/c/Windows/Sysnative/WindowsPowerShell/v1.0/powershell.exe || true)"
+
+if [[ -z "${ps:-}" ]]; then
+  printf 'windows-notify: no powershell.exe under /mnt/c/Windows (WSL interop?)\n' >&2
+  exit 1
+fi
+
+title_b64="$(printf '%s' "$title" | base64 -w0)"
+body_b64="$(printf '%s' "$body" | base64 -w0)"
+
+# WinRT toast attributed to Windows PowerShell (registered AUMID). Beep even
+# if Focus Assist swallows the toast.
+"$ps" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command "
+\$title = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$title_b64'))
+\$msg = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$body_b64'))
+try { [console]::Beep(880, 280) } catch {}
+\$appId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+\$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+\$t = \$xml.GetElementsByTagName('text')
+[void]\$t.Item(0).AppendChild(\$xml.CreateTextNode(\$title))
+[void]\$t.Item(1).AppendChild(\$xml.CreateTextNode(\$msg))
+\$toast = [Windows.UI.Notifications.ToastNotification]::new(\$xml)
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier(\$appId).Show(\$toast)
+" >/dev/null 2>&1

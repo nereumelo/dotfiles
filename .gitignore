@@ -32,3 +32,5 @@
 *.swp
 *~
 .chezmoitemp/
+__pycache__/
+*.pyc

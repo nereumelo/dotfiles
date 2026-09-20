@@ -130,9 +130,9 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 
 - Personal identity from `.chezmoidata.toml`; work via `includeIf "gitdir:~/work/"` → `~/.config/git/config-work`
 - `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
-- SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK=~/.bitwarden-ssh-agent.sock`
+- SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK` → `~/.bitwarden-ssh-agent-notify.sock` (proxy) → `~/.bitwarden-ssh-agent.sock`
 - `~/.ssh/config` is chezmoi-managed. It `Include`s gitignored `~/.ssh/config.local` (`HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`) and then inlines `IdentityFile` from `~/.ssh/config.identity` (`ssh-pub`). HostName/User are not in git.
-- `ssh-host-local <host> <hostname> <user>` writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing
+- `ssh-host-local <host> <hostname> <user>` writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent-notify.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing
 - Without that `.pub` on disk, OpenSSH `IdentitiesOnly` ignores the agent (`identity file … type -1`, never `Offering public key`)
 - Private keys stay in the **Arch** Bitwarden desktop SSH agent. There is no headless Bitwarden SSH daemon — the app must stay open and unlocked. `bw` CLI cannot sign SSH
 - Site passwords (browser) are the Windows Bitwarden extension / same account; they are not this socket
@@ -148,12 +148,14 @@ Bitwarden vault syncs via your account across Windows/Arch clients. Enable the S
 3. Confirm the socket and that keys appear after you import them:
 
 ```bash
-echo "$SSH_AUTH_SOCK"    # ~/.bitwarden-ssh-agent.sock
-ls -l ~/.bitwarden-ssh-agent.sock
+echo "$SSH_AUTH_SOCK"    # ~/.bitwarden-ssh-agent-notify.sock when the proxy is up
+ls -l ~/.bitwarden-ssh-agent.sock ~/.bitwarden-ssh-agent-notify.sock
 ssh-add -l               # empty until SSH-key items exist and the vault is unlocked
 ```
 
 `agent refused operation` means the desktop refused to sign: bring the Bitwarden window forward and **Allow**, or disable per-use confirmation in SSH-agent settings. WSLg often hides that prompt.
+
+Bitwarden has no OS notification for SSH authorization. `bitwarden-ssh-notify` proxies the agent socket: a **sign** request raises a **Windows toast** (and a beep) and tries to `xdotool` the Bitwarden window forward. `chezmoi apply` enables the systemd user unit. Test with `windows-notify --test`. Windows **Settings → System → Notifications** must be on (Focus Assist off).
 
 ### Hosts in `config.local`
 

@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Proxy Bitwarden's SSH agent socket and alert on sign (key usage) requests.
+
+OpenSSH IdentityAgent / SSH_AUTH_SOCK should point at the notify socket.
+The real Bitwarden socket stays ~/.bitwarden-ssh-agent.sock.
+"""
+from __future__ import annotations
+
+import os
+import socket
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+HOME = os.path.expanduser("~")
+BACKEND = os.path.join(HOME, ".bitwarden-ssh-agent.sock")
+LISTEN = os.path.join(HOME, ".bitwarden-ssh-agent-notify.sock")
+SSH2_AGENTC_SIGN_REQUEST = 13
+DEBOUNCE_SEC = 8.0
+MAX_MSG = 256 * 1024
+
+_last_alert = 0.0
+_last_lock = threading.Lock()
+
+
+def recvall(sock: socket.socket, n: int) -> bytes | None:
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            return None
+        buf.extend(chunk)
+    return bytes(buf)
+
+
+def read_agent_frame(sock: socket.socket) -> bytes | None:
+    hdr = recvall(sock, 4)
+    if not hdr:
+        return None
+    (length,) = struct.unpack(">I", hdr)
+    if length == 0 or length > MAX_MSG:
+        return None
+    body = recvall(sock, length)
+    if body is None:
+        return None
+    return hdr + body
+
+
+def alert() -> None:
+    global _last_alert
+    now = time.monotonic()
+    with _last_lock:
+        if now - _last_alert < DEBOUNCE_SEC:
+            return
+        _last_alert = now
+    notify = os.path.join(HOME, ".local", "bin", "windows-notify")
+    if os.access(notify, os.X_OK):
+        subprocess.Popen(
+            [notify, "Bitwarden SSH", "Authorize the SSH key in Bitwarden Desktop"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    display = os.environ.get("DISPLAY") or ":0"
+    xdotool = "/usr/bin/xdotool"
+    if os.access(xdotool, os.X_OK):
+        env = os.environ.copy()
+        env["DISPLAY"] = display
+        subprocess.Popen(
+            [
+                xdotool,
+                "search",
+                "--onlyvisible",
+                "--class",
+                "bitwarden",
+                "windowactivate",
+                "windowraise",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        )
+
+
+def pipe_backend_to_client(backend: socket.socket, client: socket.socket) -> None:
+    try:
+        while True:
+            data = backend.recv(65536)
+            if not data:
+                break
+            client.sendall(data)
+    except OSError:
+        pass
+    finally:
+        try:
+            client.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+
+
+def handle_client(client: socket.socket) -> None:
+    backend = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        deadline = time.time() + 5
+        while True:
+            try:
+                backend.connect(BACKEND)
+                break
+            except OSError:
+                if time.time() >= deadline:
+                    return
+                time.sleep(0.2)
+        t = threading.Thread(target=pipe_backend_to_client, args=(backend, client), daemon=True)
+        t.start()
+        while True:
+            frame = read_agent_frame(client)
+            if frame is None:
+                break
+            if len(frame) >= 5 and frame[4] == SSH2_AGENTC_SIGN_REQUEST:
+                alert()
+            backend.sendall(frame)
+        t.join(timeout=2)
+    except OSError:
+        pass
+    finally:
+        try:
+            backend.close()
+        except OSError:
+            pass
+        try:
+            client.close()
+        except OSError:
+            pass
+
+
+def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] in ("--test", "-t"):
+        alert()
+        return 0
+
+    os.makedirs(HOME, exist_ok=True)
+    if os.path.exists(LISTEN):
+        try:
+            os.unlink(LISTEN)
+        except OSError:
+            pass
+
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(LISTEN)
+    os.chmod(LISTEN, 0o600)
+    server.listen(16)
+    server.settimeout(1.0)
+
+    while True:
+        try:
+            client, _ = server.accept()
+        except (TimeoutError, socket.timeout):
+            continue
+        except KeyboardInterrupt:
+            break
+        threading.Thread(target=handle_client, args=(client,), daemon=True).start()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
