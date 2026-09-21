@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Per-org Git identity files for includeIf gitdir:~/work/<org>/
+set -euo pipefail
+
+mkdir -p "${HOME}/.config/git" "${HOME}/work"
+
+_git_sign_for() {
+  local org="$1" ssh_host="$2"
+  local pub idf sign
+  pub="${HOME}/.ssh/${org}.pub"
+  if [[ -f "$pub" ]]; then
+    printf '%s\n' "$pub"
+    return 0
+  fi
+  idf="${HOME}/.ssh/config.identity"
+  [[ -f "$idf" && -n "$ssh_host" ]] || return 0
+  sign="$(awk -v host="$ssh_host" '
+    $1 == "Host" {
+      hit = 0
+      for (i = 2; i <= NF; i++) if ($i == host) hit = 1
+      next
+    }
+    $1 == "Match" { hit = 0; next }
+    hit && $1 == "IdentityFile" {
+      $1 = ""
+      sub(/^[[:space:]]+/, "")
+      print
+      exit
+    }
+  ' "$idf")"
+  [[ -n "$sign" ]] || return 0
+  if [[ "$sign" == '~/'* ]]; then
+    sign="${HOME}/${sign#~/}"
+  fi
+  printf '%s\n' "$sign"
+}
+
+{{- range $key, $val := .git }}
+{{- if and (kindIs "map" $val) (index $val "name") (index $val "email") (index $val "ssh_host") }}
+{
+  org={{ $key | quote }}
+  ssh_host={{ index $val "ssh_host" | quote }}
+  dest="${HOME}/.config/git/config-${org}"
+  mkdir -p "${HOME}/work/${org}"
+  sign="$(_git_sign_for "$org" "$ssh_host" || true)"
+  {
+    printf '[user]\n'
+    printf '\tname = %s\n' {{ index $val "name" | quote }}
+    printf '\temail = %s\n' {{ index $val "email" | quote }}
+    if [[ -n "$sign" ]]; then
+      printf '\tsigningkey = %s\n' "$sign"
+    fi
+  } >"$dest"
+  chmod 600 "$dest"
+}
+{{- end }}
+{{- end }}

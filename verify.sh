@@ -106,6 +106,11 @@ if grep -qE '^ssh-manage\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; the
 else
   soft "ssh-manage() missing — chezmoi apply?"
 fi
+if grep -qE '^setup-work\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; then
+  ok "setup-work() in functions.sh"
+else
+  soft "setup-work() missing — chezmoi apply?"
+fi
 if grep -qE '^ssh-host-local\(\)|^ssh-pub\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; then
   soft "ssh-host-local/ssh-pub still public — chezmoi apply? use ssh-manage"
 fi

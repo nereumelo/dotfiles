@@ -314,9 +314,10 @@ Next (manual):
   3. ssh-manage
      1) Set Host — github.com, vps, extra aliases
      2) Set Public Key — pick Host, pick Bitwarden key
-  4. Add home-personal.pub as a GitHub/GitLab Signing key
-  5. Open a new Windows WezTerm window (docker group + bashrc)
-  6. Until BW agent is ready, use: git commit --no-gpg-sign
+  4. setup-work — org Git name / email / ssh-host (github.com-<org>)
+  5. Add home-personal.pub as a GitHub/GitLab Signing key
+  6. Open a new Windows WezTerm window (docker group + bashrc)
+  7. Until BW agent is ready, use: git commit --no-gpg-sign
 
 Backup: $BACKUP_DIR
 Verify:  $REPO/verify.sh

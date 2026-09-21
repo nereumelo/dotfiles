@@ -1,4 +1,4 @@
-# Managed by chezmoi — personal defaults; work via includeIf ~/work/
+# Managed by chezmoi — personal defaults; org profiles via includeIf ~/work/<org>/
 
 [user]
 	name = {{ .git.name | quote }}
@@ -24,26 +24,23 @@
 	gpgsign = true
 {{- end }}
 
-{{- $sshHost := "" -}}
-{{- if index .git.work "ssh_host" -}}
-{{- $sshHost = .git.work.ssh_host -}}
-{{- end -}}
-{{- $orgs := list -}}
-{{- if index .git.work "orgs" -}}
-{{- $orgs = .git.work.orgs -}}
-{{- end -}}
-{{- if and $sshHost $orgs }}
-{{- range $org := $orgs }}
-{{- if $org }}
+{{- range $key, $val := .git }}
+{{- if and (kindIs "map" $val) (index $val "ssh_host") }}
+{{- $sshHost := index $val "ssh_host" }}
+{{- if $sshHost }}
 
-# Stored remote stays git@github.com:{{ $org }}/repo.git; SSH uses Host {{ $sshHost }}.
-[url "git@{{ $sshHost }}:{{ $org }}/"]
-	insteadOf = git@github.com:{{ $org }}/
-	insteadOf = ssh://git@github.com/{{ $org }}/
-	insteadOf = https://github.com/{{ $org }}/
+# Stored remote stays git@github.com:{{ $key }}/repo.git; SSH uses Host {{ $sshHost }}.
+[url "git@{{ $sshHost }}:{{ $key }}/"]
+	insteadOf = git@github.com:{{ $key }}/
+	insteadOf = ssh://git@github.com/{{ $key }}/
+	insteadOf = https://github.com/{{ $key }}/
 {{- end }}
 {{- end }}
 {{- end }}
+{{- range $key, $val := .git }}
+{{- if and (kindIs "map" $val) (index $val "name") (index $val "email") }}
 
-[includeIf "gitdir:~/work/"]
-	path = ~/.config/git/config-work
+[includeIf "gitdir:~/work/{{ $key }}/"]
+	path = ~/.config/git/config-{{ $key }}
+{{- end }}
+{{- end }}

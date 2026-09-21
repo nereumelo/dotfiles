@@ -4,15 +4,8 @@ theme = "tokyo-night"
 name = "Nereu Melo"
 email = "nereuvictor1@gmail.com"
 
-# Optional work profile (includeIf gitdir:~/work/). Leave enabled=false until filled in.
-# Remotes stay git@github.com:org/repo.git. ssh_host is the SSH Host alias (ssh-manage);
-# orgs are rewritten only for that path prefix (git@github.com:acme/ → Host github.com-acme).
-[git.work]
-enabled = false
-name = ""
-email = ""
-ssh_host = ""
-orgs = []
+# Org profiles: setup-work writes [git.<org>] (name, email, ssh_host).
+# Example: [git.acme] ssh_host = "github.com-acme" → git@github.com:acme/repo.git
 
 [themes.tokyo-night]
 herdr = "tokyo-night"

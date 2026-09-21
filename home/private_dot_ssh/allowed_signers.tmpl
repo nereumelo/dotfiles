@@ -4,7 +4,12 @@
 {{- $parts := splitList " " (trim (output "cat" $personalPub)) -}}
 {{ .git.email }} namespaces="git" {{ index $parts 0 }} {{ index $parts 1 }}
 {{- end -}}
-{{- if and .git.work.enabled .git.work.email (stat (joinPath .chezmoi.homeDir ".ssh/work.pub")) }}
-{{- $workParts := splitList " " (trim (output "cat" (joinPath .chezmoi.homeDir ".ssh/work.pub"))) }}
-{{ .git.work.email }} namespaces="git" {{ index $workParts 0 }} {{ index $workParts 1 }}
+{{- range $key, $val := .git }}
+{{- if and (kindIs "map" $val) (index $val "email") }}
+{{- $pub := joinPath $.chezmoi.homeDir ".ssh" (printf "%s.pub" $key) }}
+{{- if stat $pub }}
+{{- $orgParts := splitList " " (trim (output "cat" $pub)) }}
+{{ index $val "email" }} namespaces="git" {{ index $orgParts 0 }} {{ index $orgParts 1 }}
+{{- end }}
+{{- end }}
 {{- end }}
