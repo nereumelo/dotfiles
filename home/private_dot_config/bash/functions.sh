@@ -829,6 +829,14 @@ Path(path).write_text(body)
 PY
 }
 
+# Keep in sync with git-min-version.sh (install.sh / verify.sh).
+_GIT_MIN_VERSION=2.36
+_git_at_least() {
+  local min="${1:-$_GIT_MIN_VERSION}" have
+  have="$(git version 2>/dev/null | awk '{print $3}')"
+  [[ -n "$have" ]] && [[ "$(printf '%s\n' "$min" "$have" | sort -V | head -1)" == "$min" ]]
+}
+
 # Org Git identity + insteadOf. ssh-manage only owns Host / IdentityFile.
 setup-work() {
   if [[ $# -ne 0 ]]; then
@@ -842,6 +850,10 @@ setup-work() {
     return 1
   }
   printf 'setup-work\n' >"$tty"
+  if ! _git_at_least; then
+    printf 'setup-work: git >= %s required (hasconfig:remote.*.url). sudo pacman -Syu git\n' "$_GIT_MIN_VERSION" >&2
+    return 1
+  fi
   name="$(_ssh_read_text setup-work name 'Git user.name for this org')" || return
   email="$(_ssh_read_text setup-work email 'Git user.email for this org')" || return
   if [[ "$email" != *@* || "$email" =~ [[:space:]] ]]; then

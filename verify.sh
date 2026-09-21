@@ -12,6 +12,10 @@ soft() { printf '  [warn] %s\n' "$*"; WARN=$((WARN + 1)); }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=git-min-version.sh
+. "$REPO/git-min-version.sh"
+
 echo "== Commands =="
 for c in \
   bash chezmoi mise starship nvim zoxide fzf eza atuin bat glow fd rg btm sd jq yq \
@@ -112,11 +116,11 @@ else
   soft "setup-work() missing — chezmoi apply?"
 fi
 if have git; then
-  git_ver="$(git version 2>/dev/null | awk '{print $3}')"
-  if [[ -n "$git_ver" ]] && [[ "$(printf '%s\n' 2.36 "$git_ver" | sort -V | head -1)" == 2.36 ]]; then
-    ok "git $git_ver supports hasconfig:remote.*.url"
+  git_ver="$(git_installed_version)"
+  if git_at_least; then
+    ok "git $git_ver (>= ${GIT_MIN_VERSION}, hasconfig:remote.*.url)"
   else
-    soft "git ${git_ver:-unknown} < 2.36 — org name/email/signing includeIf needs Git 2.36+"
+    bad "git ${git_ver:-unknown} < ${GIT_MIN_VERSION} required (hasconfig:remote.*.url). Upgrade: sudo pacman -Syu git"
   fi
 fi
 if grep -qE '^ssh-host-local\(\)|^ssh-pub\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; then

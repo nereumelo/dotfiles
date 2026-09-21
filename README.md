@@ -11,6 +11,7 @@ dotfiles/
 ├── bootstrap.ps1              # Day 0 from Windows (WSL distro arch + WezTerm + Linux bootstrap)
 ├── bootstrap.sh               # in-distro root first-boot (user, sudo, packages, chezmoi)
 ├── install.sh / verify.sh     # package + machine bootstrap as your Linux user
+├── git-min-version.sh         # Git >= 2.36 (hasconfig:remote.*.url); sourced by install/verify
 ├── windows/wezterm.lua        # copied to %USERPROFILE%\.config\wezterm\wezterm.lua
 ├── packages/pacman.txt|aur.txt
 ├── config/wsl.conf.example
@@ -202,7 +203,7 @@ ssh -T git@github.com
 ssh -T git@github.com-acme
 ```
 
-Needs Git 2.36+ (`hasconfig:remote.*.url`). Arch pacman git is fine.
+`install.sh` requires Git **2.36+** (`hasconfig:remote.*.url`) and exits if `/usr/bin/git` is older (`sudo pacman -Syu git`). `verify.sh` fails the same check.
 
 GitHub over 443 / Enterprise — Set Host with a different hostname (keep `Port` if you add it; Set Host will not drop it):
 
