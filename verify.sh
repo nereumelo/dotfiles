@@ -111,6 +111,14 @@ if grep -qE '^setup-work\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; the
 else
   soft "setup-work() missing — chezmoi apply?"
 fi
+if have git; then
+  git_ver="$(git version 2>/dev/null | awk '{print $3}')"
+  if [[ -n "$git_ver" ]] && [[ "$(printf '%s\n' 2.36 "$git_ver" | sort -V | head -1)" == 2.36 ]]; then
+    ok "git $git_ver supports hasconfig:remote.*.url"
+  else
+    soft "git ${git_ver:-unknown} < 2.36 — org name/email/signing includeIf needs Git 2.36+"
+  fi
+fi
 if grep -qE '^ssh-host-local\(\)|^ssh-pub\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; then
   soft "ssh-host-local/ssh-pub still public — chezmoi apply? use ssh-manage"
 fi

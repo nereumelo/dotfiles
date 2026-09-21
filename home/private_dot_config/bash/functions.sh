@@ -853,10 +853,9 @@ setup-work() {
   org="$(_git_org_from_ssh_host "$ssh_host")" || return
   data="$(_git_chezmoi_data)" || return
   _git_upsert_org_section "$data" "$org" "$name" "$email" "$ssh_host" || return
-  mkdir -p "${HOME}/work/${org}"
   if command -v chezmoi >/dev/null 2>&1; then
     chezmoi apply || printf 'setup-work: wrote [git.%s]; chezmoi apply failed\n' "$org" >&2
   fi
-  printf 'Wrote [git.%s] name=%s email=%s ssh_host=%s (repos: ~/work/%s/)\n' \
+  printf 'Wrote [git.%s] name=%s email=%s ssh_host=%s (remote git@github.com:%s/…)\n' \
     "$org" "$name" "$email" "$ssh_host" "$org"
 }

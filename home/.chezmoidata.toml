@@ -5,7 +5,8 @@ name = "Nereu Melo"
 email = "nereuvictor1@gmail.com"
 
 # Org profiles: setup-work writes [git.<org>] (name, email, ssh_host).
-# Example: [git.acme] ssh_host = "github.com-acme" → git@github.com:acme/repo.git
+# Example: [git.acme] ssh_host = "github.com-acme"
+# Remote git@github.com:acme/… uses that Host plus name/email/signing (not the working tree path).
 
 [themes.tokyo-night]
 herdr = "tokyo-night"

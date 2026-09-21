@@ -127,7 +127,7 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 
 ## Git / SSH / signing
 
-- Personal identity from `.chezmoidata.toml`. Org profiles: `setup-work` writes `[git.<org>]` (name, email, ssh_host); `includeIf "gitdir:~/work/<org>/"` → `~/.config/git/config-<org>`. Remotes stay `git@github.com:org/repo.git`; insteadOf maps that org prefix to the SSH Host alias.
+- Personal identity from `.chezmoidata.toml`. Org profiles: `setup-work` writes `[git.<org>]` (name, email, ssh_host). Key, name, email, and signing all follow the remote `git@github.com:org/…` (`insteadOf` + `includeIf hasconfig:remote.*.url`).
 - `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
 - SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK` → `~/.bitwarden-ssh-agent-notify.sock` (proxy) → `~/.bitwarden-ssh-agent.sock`
 - `~/.ssh/config` is chezmoi-managed. It `Include`s gitignored `~/.ssh/config.local` (`HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`) and then inlines `IdentityFile` from `~/.ssh/config.identity`. HostName/User are not in git.
@@ -193,16 +193,16 @@ setup-work
 # ssh-host (list) Host aliases from ssh-manage (github.com-<org>):
 ```
 
-`github.com-acme` → `[git.acme]` in `.chezmoidata.toml` (`name`, `email`, `ssh_host` — no `enabled`). `chezmoi apply` writes `url.insteadOf` (`git@github.com:acme/` → Host `github.com-acme`) and `includeIf gitdir:~/work/acme/` → `~/.config/git/config-acme`. Other owners on `github.com` stay personal. `git remote -v` shows `git@github.com:acme/repo.git`.
+`github.com-acme` → `[git.acme]` in `.chezmoidata.toml` (`name`, `email`, `ssh_host` — no `enabled`). `chezmoi apply` writes `url.insteadOf` and `includeIf hasconfig:remote.*.url:git@github.com:acme/**` → `~/.config/git/config-acme`. Other owners on `github.com` stay personal. `git remote -v` shows `git@github.com:acme/repo.git`. Directory does not matter.
 
 ```bash
-git clone git@github.com:nereumelo/dotfiles.git   # personal key
-git clone git@github.com:acme/repo.git ~/work/acme/repo   # org key + org identity
+git clone git@github.com:nereumelo/dotfiles.git   # personal key + identity
+git clone git@github.com:acme/repo.git            # org key + name/email/signing
 ssh -T git@github.com
 ssh -T git@github.com-acme
 ```
 
-Org **name/email/signing** apply under `~/work/<org>/`. SSH org routing (insteadOf) is global.
+Needs Git 2.36+ (`hasconfig:remote.*.url`). Arch pacman git is fine.
 
 GitHub over 443 / Enterprise — Set Host with a different hostname (keep `Port` if you add it; Set Host will not drop it):
 

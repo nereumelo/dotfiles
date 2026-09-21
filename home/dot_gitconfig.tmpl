@@ -1,4 +1,4 @@
-# Managed by chezmoi — personal defaults; org profiles via includeIf ~/work/<org>/
+# Managed by chezmoi — personal defaults; org profiles via remote URL (hasconfig)
 
 [user]
 	name = {{ .git.name | quote }}
@@ -40,7 +40,12 @@
 {{- range $key, $val := .git }}
 {{- if and (kindIs "map" $val) (index $val "name") (index $val "email") }}
 
-[includeIf "gitdir:~/work/{{ $key }}/"]
+# Same remote prefix as insteadOf: name/email/signing follow git@github.com:{{ $key }}/ (Git 2.36+).
+[includeIf "hasconfig:remote.*.url:git@github.com:{{ $key }}/**"]
+	path = ~/.config/git/config-{{ $key }}
+[includeIf "hasconfig:remote.*.url:ssh://git@github.com/{{ $key }}/**"]
+	path = ~/.config/git/config-{{ $key }}
+[includeIf "hasconfig:remote.*.url:https://github.com/{{ $key }}/**"]
 	path = ~/.config/git/config-{{ $key }}
 {{- end }}
 {{- end }}

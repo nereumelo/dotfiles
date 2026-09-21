@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Per-org Git identity files for includeIf gitdir:~/work/<org>/
+# Per-org Git identity files for includeIf hasconfig:remote.*.url (git@github.com:<org>/**)
 set -euo pipefail
 
-mkdir -p "${HOME}/.config/git" "${HOME}/work"
+mkdir -p "${HOME}/.config/git"
 
 _git_sign_for() {
   local org="$1" ssh_host="$2"
@@ -41,7 +41,6 @@ _git_sign_for() {
   org={{ $key | quote }}
   ssh_host={{ index $val "ssh_host" | quote }}
   dest="${HOME}/.config/git/config-${org}"
-  mkdir -p "${HOME}/work/${org}"
   sign="$(_git_sign_for "$org" "$ssh_host" || true)"
   {
     printf '[user]\n'
