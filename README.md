@@ -1,6 +1,6 @@
 # Dotfiles (Arch Linux WSL)
 
-Chezmoi-managed devops environment for **Arch in WSL**. Local git repo only for now — does **not** replace [github.com/nereumelo/dotfiles](https://github.com/nereumelo/dotfiles).
+Chezmoi-managed devops environment for **Arch in WSL**: [github.com/nereumelo/dotfiles](https://github.com/nereumelo/dotfiles).
 
 **Stack:** Bash + ble.sh + starship + mise + direnv · UX CLIs (zoxide, fzf, eza, atuin, bat, glow, fd, ripgrep, bottom, sd, jq, go-yq) · Windows WezTerm → WSL `arch` · Herdr · OpenCode 2 · Cursor CLI · Claude Code · Neovim · Docker · Bitwarden SSH + SSH commit signing · Tokyo Night theme
 
@@ -11,16 +11,17 @@ dotfiles/
 ├── bootstrap.ps1              # Day 0 from Windows (WSL distro arch + WezTerm + Linux bootstrap)
 ├── bootstrap.sh               # in-distro root first-boot (user, sudo, packages, chezmoi)
 ├── install.sh / verify.sh     # package + machine bootstrap as your Linux user
-├── git-min-version.sh         # Git >= 2.36 (hasconfig:remote.*.url); sourced by install/verify
+├── git-min-version.sh         # Git >= 2.36 (hasconfig:remote.*.url); sourced by install/verify/bootstrap
 ├── windows/wezterm.lua        # copied to %USERPROFILE%\.config\wezterm\wezterm.lua
 ├── packages/pacman.txt|aur.txt
 ├── config/wsl.conf.example
 └── home/                      # chezmoi sourceDir → applied into ~
-    ├── .chezmoidata.toml      # theme + non-secret git defaults
+    ├── .chezmoidata.toml      # theme + non-secret git defaults ([git], [git.<org>])
     ├── dot_*                  # → ~/.*
     ├── private_dot_config/    # → ~/.config/…
     ├── private_dot_ssh/       # → ~/.ssh/… (config, allowed_signers)
-    └── run_once_after_*.sh    # post-apply hooks (no package installs)
+    ├── run_after_*.sh         # every apply (Bitwarden notify unit, ~/.config/git/config-<org>)
+    └── run_once_after_*.sh    # first apply only (no package installs)
 ```
 
 | Chezmoi source | Target |
@@ -100,10 +101,11 @@ Sudo is prompted for pacman / systemctl / usermod / chsh only. Env flags: `SKIP_
 
 Then:
 
-1. Unlock **Arch** Bitwarden → enable SSH agent → GitHub + VPS keys (sections below).
-2. `./verify.sh`
-3. Open a **new WezTerm window** (bash + docker group).
-4. Per repo: add `.envrc` + `direnv allow` when needed; projects may also use `mise.toml`.
+1. Unlock **Arch** Bitwarden → enable SSH agent → import keys (sections below).
+2. `ssh-manage` — Set Host, then Set Public Key. `setup-work` if you have org remotes.
+3. `./verify.sh`
+4. Open a **new WezTerm window** (bash + docker group).
+5. Per repo: add `.envrc` + `direnv allow` when needed; projects may also use `mise.toml`.
 
 ## Day N — edit dots
 
@@ -128,19 +130,44 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 
 ## Git / SSH / signing
 
-- Personal identity from `.chezmoidata.toml`. Org profiles: `setup-work` writes `[git.<org>]` (name, email, ssh_host). Key, name, email, and signing all follow the remote `git@github.com:org/…` (`insteadOf` + `includeIf hasconfig:remote.*.url`).
-- `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
-- SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK` → `~/.bitwarden-ssh-agent-notify.sock` (proxy) → `~/.bitwarden-ssh-agent.sock`
-- `~/.ssh/config` is chezmoi-managed. It `Include`s gitignored `~/.ssh/config.local` (`HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`) and then inlines `IdentityFile` from `~/.ssh/config.identity`. HostName/User are not in git.
-- `ssh-manage` (no args) is SSH only: **1** Set Host writes `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent-notify.sock` and `IdentitiesOnly yes` are always set). **2** Set Public Key dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing (Set Host first). Host list comes from `config.local`, key list from Bitwarden.
-- `setup-work` (no args) writes `[git.<org>]` in chezmoi: **name** / **email** (text), **ssh-host** (list from ssh-manage). `github.com-acme` → `[git.acme]`. Presence of the table is the profile (no `enabled` flag).
-- Without that `.pub` on disk, OpenSSH `IdentitiesOnly` ignores the agent (`identity file … type -1`, never `Offering public key`)
-- Private keys stay in the **Arch** Bitwarden desktop SSH agent. There is no headless Bitwarden SSH daemon — the app must stay open and unlocked. `bw` CLI cannot sign SSH
-- Site passwords (browser) are the Windows Bitwarden extension / same account; they are not this socket
-- `cat` is aliased to `bat` — use `\cat` when you need the real binary
-- Work in the Linux home (`wsl ~` / WezTerm `WSL:arch`). `wsl` from `C:\Users\…` lands on `/mnt/c` and Git/SSH there are the wrong tree
+Remotes stay `git@github.com:<owner>/<repo>.git`. OpenSSH never reads `<owner>` from that path — the Host alias and Git `insteadOf` do.
 
-Bitwarden vault syncs via your account across Windows/Arch clients. Enable the SSH agent in the **Arch** desktop app. Do not bridge Windows `npiperelay` into WSL for this setup.
+| Piece | Where | Written by |
+|-------|-------|------------|
+| HostName, User, IdentityAgent, IdentitiesOnly | `~/.ssh/config.local` (gitignored) | `ssh-manage` Set Host |
+| IdentityFile | `~/.ssh/config.identity` (inlined into chezmoi `~/.ssh/config`) | `ssh-manage` Set Public Key |
+| Personal name / email / signing | `[git]` in `.chezmoidata.toml` → `~/.gitconfig` | repo default (`chezmoi edit`) |
+| Org name / email / signing + URL rewrite | `[git.<org>]` → `~/.gitconfig` + `~/.config/git/config-<org>` | `setup-work` |
+
+Org (`acme`) flow:
+
+1. `ssh-manage` Set Host → alias `github.com-acme` (`HostName github.com`, `User git`)
+2. `ssh-manage` Set Public Key → that Host’s `IdentityFile`
+3. `setup-work` → `[git.acme]` (`ssh_host = "github.com-acme"`)
+4. Git `insteadOf` sends `git@github.com:acme/` to Host `github.com-acme`
+5. `includeIf hasconfig:remote.*.url` loads name/email/signing from the **stored** remote (`git@github.com:acme/…`). The working tree path does not matter.
+
+Git **2.36+** is required (`includeIf hasconfig:remote.*.url`). `install.sh` and `bootstrap.sh` exit if older; `verify.sh` fails; `setup-work` refuses. Upgrade: `sudo pacman -Syu git`.
+
+`EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`). `cat` is aliased to `bat` — `\cat` for the real binary. Work in the Linux home (`wsl ~` / WezTerm `WSL:arch`). `wsl` from `C:\Users\…` lands on `/mnt/c` (wrong Git/SSH tree).
+
+### Commands
+
+`ssh-manage` (no args) is SSH only. Prompts read `/dev/tty` with bash `builtin read` so they work under ble.sh.
+
+1. **Set Host** — `host` / `hostname` / `user` → `config.local`. `IdentityAgent ~/.bitwarden-ssh-agent-notify.sock` and `IdentitiesOnly yes` are always set (not prompts). Re-run is a no-op; `Port` and extra keys stay. `install.sh` does not seed Hosts.
+2. **Set Public Key** — pick a Host from `config.local`, pick a Bitwarden comment from `ssh-add -L` → `~/.ssh/<key>.pub` + `IdentityFile`. Host must exist. Idempotent when the `.pub` and `IdentityFile` already match.
+
+Without that `.pub` on disk, OpenSSH `IdentitiesOnly` ignores the agent (`identity file … type -1`).
+
+`setup-work` (no args) writes `[git.<org>]` (`name`, `email`, `ssh_host`). Org comes from the Host: `github.com-acme` → `[git.acme]`. No `enabled` flag — the table existing is the profile.
+
+```bash
+ssh-manage    # 1) Set Host   2) Set Public Key
+setup-work    # name (text) / email (text) / ssh-host (list from ssh-manage)
+```
+
+Private keys stay in the **Arch** Bitwarden desktop SSH agent (app open and unlocked). `bw` CLI cannot sign SSH. Browser passwords are the Windows Bitwarden extension, not this socket. Do not bridge Windows `npiperelay` into WSL.
 
 ### Bitwarden agent (once)
 
@@ -158,61 +185,7 @@ ssh-add -l               # empty until SSH-key items exist and the vault is unlo
 
 Bitwarden has no OS notification for SSH authorization. `bitwarden-ssh-notify` proxies the agent socket: a **sign** request writes BEL + OSC 777 into the waiting WezTerm pane (flash, beep, WezTerm notification) and tries to `xdotool` the Bitwarden window forward. `chezmoi apply` enables the systemd user unit. Copy `windows/wezterm.lua` for `visual_bell`. Test in WezTerm: `bitwarden-ssh-notify --test`.
 
-### Hosts in `config.local`
-
-One SSH alias per `Host` block. `<host>` is the alias you type (`ssh vps`, `ssh git@github.com-acme`); `<hostname>` is the real name (`github.com`, `ssh.github.com`, an IP). Git remotes stay `git@github.com:org/repo.git`.
-
-`install.sh` does not seed Hosts. `IdentityAgent` and `IdentitiesOnly` are not prompts. Re-running Set Host is a no-op: `Port` and other extra keys in `config.local` stay put.
-
-```bash
-ssh-manage
-# 1) Set Host — host / hostname / user
-# 2) Set Public Key — pick a Host from config.local, pick a Bitwarden key comment from ssh-add -L
-```
-
-Set Public Key is idempotent when the `.pub` and `IdentityFile` already match. It writes `IdentityFile` via `~/.ssh/config.identity` and runs `chezmoi apply` so `~/.ssh/config` shows the key (and git signing templates for `home-personal` / org `.pub` files).
-
-### Extra GitHub accounts / orgs
-
-Git remotes are always `git@github.com:<owner>/<repo>.git`. `ssh-manage` only creates the SSH Host. `setup-work` writes the Git org profile.
-
-| Remote (stored) | SSH Host | Git table |
-|-----------------|----------|-----------|
-| `git@github.com:nereumelo/…` | `github.com` | `[git]` personal |
-| `git@github.com:acme/…` | `github.com-acme` | `[git.acme]` |
-
-```bash
-ssh-manage   # 1) Set Host: github.com / github.com / git
-ssh-manage   # 2) Set Public Key: github.com → home-personal
-
-ssh-manage   # 1) Set Host: github.com-acme / github.com / git
-ssh-manage   # 2) Set Public Key: github.com-acme → acme (or work)
-
-setup-work
-# name (text) Git user.name for this org:
-# email (text) Git user.email for this org:
-# ssh-host (list) Host aliases from ssh-manage (github.com-<org>):
-```
-
-`github.com-acme` → `[git.acme]` in `.chezmoidata.toml` (`name`, `email`, `ssh_host` — no `enabled`). `chezmoi apply` writes `url.insteadOf` and `includeIf hasconfig:remote.*.url:git@github.com:acme/**` → `~/.config/git/config-acme`. Other owners on `github.com` stay personal. `git remote -v` shows `git@github.com:acme/repo.git`. Directory does not matter.
-
-```bash
-git clone git@github.com:nereumelo/dotfiles.git   # personal key + identity
-git clone git@github.com:acme/repo.git            # org key + name/email/signing
-ssh -T git@github.com
-ssh -T git@github.com-acme
-```
-
-`install.sh` requires Git **2.36+** (`hasconfig:remote.*.url`) and exits if `/usr/bin/git` is older (`sudo pacman -Syu git`). `verify.sh` fails the same check.
-
-GitHub over 443 / Enterprise — Set Host with a different hostname (keep `Port` if you add it; Set Host will not drop it):
-
-```bash
-ssh-manage   # github.com / ssh.github.com / git
-ssh-manage   # ghe / github.mycompany.com / git, then Set Public Key → work
-```
-
-### GitHub (`ssh git@github.com` + commit signing)
+### Personal GitHub (`git@github.com:…`)
 
 Private key only in Bitwarden (New item → **SSH key**: import or generate Ed25519). Name the item so the agent comment matches, e.g. `home-personal`.
 
@@ -239,6 +212,35 @@ If it still fails, `ssh -o IdentitiesOnly=no -T git@github.com` tests the agent 
 
 Until the agent is unlocked: `git commit --no-gpg-sign`.
 
+### Org GitHub (`git@github.com:acme/…`)
+
+Clone and remotes stay `git@github.com:acme/repo.git`. `git remote -v` never shows `git@github.com-acme:`.
+
+| Remote | SSH Host | Git table |
+|--------|----------|-----------|
+| `git@github.com:nereumelo/…` | `github.com` | `[git]` personal |
+| `git@github.com:acme/…` | `github.com-acme` | `[git.acme]` |
+
+```bash
+ssh-manage   # Set Host: github.com-acme / github.com / git
+ssh-manage   # Set Public Key: github.com-acme → acme
+setup-work   # name / email / ssh-host github.com-acme  →  [git.acme]
+
+git clone git@github.com:nereumelo/dotfiles.git   # personal key + identity
+git clone git@github.com:acme/repo.git            # org key + name/email/signing
+ssh -T git@github.com
+ssh -T git@github.com-acme
+```
+
+`git remote -v` still shows `git@github.com:acme/repo.git`.
+
+GitHub over 443 / Enterprise — Set Host with a different hostname (keep `Port` if you add it; Set Host will not drop it):
+
+```bash
+ssh-manage   # github.com / ssh.github.com / git
+ssh-manage   # ghe / github.mycompany.com / git, then Set Public Key
+```
+
 ### VPS (`ssh vps`)
 
 Use a **separate** Bitwarden SSH-key item (e.g. `vps`), not `home-personal`, unless that exact public key is also in the server `authorized_keys`.
@@ -248,13 +250,7 @@ ssh-manage   # Set Host: vps / YOUR_IP_OR_DNS / YOUR_REMOTE_USER
 ssh-manage   # Set Public Key: vps → vps
 ```
 
-Install the **same** public line on the server (`~/.ssh/authorized_keys` for that User), then:
-
-```bash
-ssh vps
-```
-
-Bitwarden must be unlocked; **Allow** if the agent prompts. `install.sh` may copy a legacy `vps_srv1938886.pub` → `vps.pub` when present. It does not write HostName/User. Delete leftover **private** key files from `~/.ssh/` after import.
+Install the **same** public line on the server (`~/.ssh/authorized_keys` for that User), then `ssh vps`. Bitwarden must be unlocked; **Allow** if the agent prompts. `install.sh` may copy a legacy `vps_srv1938886.pub` → `vps.pub` when present. It does not write HostName/User. Delete leftover **private** key files from `~/.ssh/` after import.
 
 ## WezTerm (Windows → WSL:arch)
 
@@ -271,10 +267,8 @@ WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFI
 
 CLI tools (`claude`, `gh`, `xdg-open`) cannot see `cmd.exe` because `appendWindowsPath=false`. `~/.local/bin/windows-open` (and an `xdg-open` shim) call Windows PowerShell `Start-Process`. `BROWSER` / `GH_BROWSER` point at that script after a new shell (`chezmoi apply`).
 
-Interactive bash helpers in `~/.config/bash/functions.sh`:
+Interactive bash helpers in `~/.config/bash/functions.sh` (SSH: `ssh-manage` / `setup-work` above):
 
-- `ssh-manage` — SSH Host in `config.local` and public key / `IdentityFile` (no args; Bitwarden agent)
-- `setup-work` — `[git.<org>]` in chezmoi (name, email, ssh-host from ssh-manage)
 - `copy` — clipboard via **xclip** (X11) or **wl-copy** (Wayland). WSLg mirrors that to the Windows clipboard. Source encoding is detected (`file --mime-encoding`) and converted to UTF-8 **without a BOM** (a leading U+FEFF was the `clip.exe` UTF-16LE prefix). `copy readme.md` or `cat readme.md | copy` (`cat` is `bat -p`; `copy` reads stdin/`command cat`, not bat). Needs `DISPLAY`/`WAYLAND_DISPLAY` (WSLg).
 - `open` — Windows Explorer (`explorer.exe` is not on PATH). `open` / `open .` is the current directory; `open ~/me/dotfiles` that folder. A file path uses `explorer /select,` so Explorer highlights it.
 
