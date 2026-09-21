@@ -1,5 +1,5 @@
 # Git minimum for includeIf hasconfig:remote.*.url (org name/email/signing).
-# Sourced by install.sh and verify.sh. GIT_MIN_VERSION is the floor.
+# Sourced by install.sh, verify.sh, and bootstrap.sh after clone. GIT_MIN_VERSION is the floor.
 GIT_MIN_VERSION=2.36
 
 git_installed_version() {

@@ -1,7 +1,7 @@
 # Managed by chezmoi.
-# HostName, User, IdentityAgent, IdentitiesOnly → ~/.ssh/config.local (not tracked)
-# IdentityFile → ssh-manage Set Public Key writes ~/.ssh/config.identity; inlined here.
-# ssh-manage  (interactive: Set Host / Set Public Key)
+# ssh-manage Set Host → ~/.ssh/config.local (HostName, User, IdentityAgent, IdentitiesOnly; not tracked).
+# ssh-manage Set Public Key → ~/.ssh/config.identity, inlined below.
+# setup-work → [git.<org>] in chezmoi (Git insteadOf + identity), not this file.
 Include config.local
 {{- $idf := joinPath .chezmoi.homeDir ".ssh/config.identity" -}}
 {{- if stat $idf }}
