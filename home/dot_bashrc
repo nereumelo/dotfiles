@@ -49,7 +49,7 @@ if command -v starship >/dev/null 2>&1; then
 fi
 
 # Bitwarden SSH agent (Linux-native). Unlock Arch Bitwarden before ssh/git.
-# Notify proxy raises a Windows toast when Bitwarden asks to authorize a key.
+# Notify proxy alerts in WezTerm when Bitwarden asks to authorize a key.
 if [[ -S "${HOME}/.bitwarden-ssh-agent-notify.sock" ]]; then
   export SSH_AUTH_SOCK="${HOME}/.bitwarden-ssh-agent-notify.sock"
 else

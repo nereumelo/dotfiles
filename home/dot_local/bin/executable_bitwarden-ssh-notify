@@ -3,26 +3,43 @@
 
 OpenSSH IdentityAgent / SSH_AUTH_SOCK should point at the notify socket.
 The real Bitwarden socket stays ~/.bitwarden-ssh-agent.sock.
+
+SIGN_REQUEST is logged every time (no debounce) to
+~/.local/share/bitwarden-ssh-notify.log and stderr (systemd journal).
+Bitwarden's UI shows this proxy (python3) as the peer; the log has the
+real client PID/cmdline/cwd/parent chain. WezTerm OSC 777 + xdotool stay
+debounced.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import os
 import socket
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
 HOME = os.path.expanduser("~")
 BACKEND = os.path.join(HOME, ".bitwarden-ssh-agent.sock")
 LISTEN = os.path.join(HOME, ".bitwarden-ssh-agent-notify.sock")
+LOG_PATH = os.path.join(HOME, ".local", "share", "bitwarden-ssh-notify.log")
+LOG_MAX = 1_000_000
+SSH2_AGENT_IDENTITIES_ANSWER = 12
 SSH2_AGENTC_SIGN_REQUEST = 13
 DEBOUNCE_SEC = 8.0
 MAX_MSG = 256 * 1024
+PARENT_LIMIT = 10
+CMD_MAX = 200
 
 _last_alert = 0.0
 _last_lock = threading.Lock()
+_log_lock = threading.Lock()
+_ident_lock = threading.Lock()
+_ident_comments: dict[bytes, str] = {}
 SO_PEERCRED = 17  # Linux
 NOTIFY_TITLE = "Bitwarden SSH"
 NOTIFY_BODY = "Authorize the SSH key in Bitwarden Desktop"
@@ -49,6 +66,31 @@ def read_agent_frame(sock: socket.socket) -> bytes | None:
     if body is None:
         return None
     return hdr + body
+
+
+def ssh_string_at(data: bytes, offset: int) -> tuple[bytes, int] | None:
+    if offset < 0 or offset + 4 > len(data):
+        return None
+    (n,) = struct.unpack_from(">I", data, offset)
+    offset += 4
+    if n > MAX_MSG or offset + n > len(data):
+        return None
+    return data[offset : offset + n], offset + n
+
+
+def try_pop_frame(buf: bytearray) -> bytes | None:
+    if len(buf) < 4:
+        return None
+    (length,) = struct.unpack(">I", buf[:4])
+    if length == 0 or length > MAX_MSG:
+        buf.clear()
+        return None
+    need = 4 + length
+    if len(buf) < need:
+        return None
+    frame = bytes(buf[:need])
+    del buf[:need]
+    return frame
 
 
 def peer_pid(sock: socket.socket) -> int | None:
@@ -109,12 +151,13 @@ def raise_bitwarden() -> None:
     )
 
 
-def alert(client: socket.socket | None = None, *, force: bool = False) -> None:
+def alert(client: socket.socket | None = None, *, force: bool = False) -> bool:
+    """WezTerm + xdotool. Debounced unless force. Returns whether UI fired."""
     global _last_alert
     now = time.monotonic()
     with _last_lock:
         if not force and now - _last_alert < DEBOUNCE_SEC:
-            return
+            return False
         _last_alert = now
     payload = wezterm_alert_bytes()
     pid = peer_pid(client) if client is not None else None
@@ -124,15 +167,333 @@ def alert(client: socket.socket | None = None, *, force: bool = False) -> None:
         sys.stdout.buffer.write(payload)
         sys.stdout.buffer.flush()
     raise_bitwarden()
+    return True
+
+
+def _proc_read(pid: int, name: str) -> bytes:
+    try:
+        with open(f"/proc/{pid}/{name}", "rb") as fh:
+            return fh.read()
+    except OSError:
+        return b""
+
+
+def _proc_cmdline(pid: int) -> str:
+    raw = _proc_read(pid, "cmdline")
+    text = raw.replace(b"\x00", b" ").decode("utf-8", "replace").strip()
+    if len(text) > CMD_MAX:
+        return text[: CMD_MAX - 1] + "…"
+    return text
+
+
+def _proc_link(pid: int, name: str) -> str:
+    try:
+        return os.readlink(f"/proc/{pid}/{name}")
+    except OSError:
+        return ""
+
+
+def _proc_ppid(pid: int) -> int | None:
+    try:
+        with open(f"/proc/{pid}/status", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("PPid:"):
+                    return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _proc_environ(pid: int) -> dict[str, str]:
+    raw = _proc_read(pid, "environ")
+    out: dict[str, str] = {}
+    for item in raw.split(b"\0"):
+        if not item or b"=" not in item:
+            continue
+        key, _, val = item.partition(b"=")
+        try:
+            out[key.decode("utf-8")] = val.decode("utf-8", "replace")
+        except UnicodeDecodeError:
+            continue
+    return out
+
+
+def _short_cmd(cmdline: str) -> str:
+    if not cmdline:
+        return "?"
+    first = cmdline.split()[0]
+    return os.path.basename(first) or first
+
+
+def pid_chain(pid: int | None, limit: int = PARENT_LIMIT) -> str:
+    if not pid:
+        return "-"
+    seen: set[int] = set()
+    parts: list[str] = []
+    cur: int | None = pid
+    for _ in range(limit):
+        if cur is None or cur <= 1 or cur in seen:
+            break
+        seen.add(cur)
+        exe = os.path.basename(_proc_link(cur, "exe") or "") or _short_cmd(_proc_cmdline(cur))
+        parts.append(f"{exe}:{cur}")
+        cur = _proc_ppid(cur)
+    return " <- ".join(parts) if parts else str(pid)
+
+
+def redact_url(url: str) -> str:
+    if "://" in url and "@" in url.split("://", 1)[1]:
+        scheme, rest = url.split("://", 1)
+        rest = rest.split("@", 1)[-1]
+        return f"{scheme}://***@{rest}"
+    return url
+
+
+def git_origin_from_dir(cwd: str) -> str:
+    git = os.path.join(cwd, ".git")
+    if os.path.isfile(git):
+        try:
+            with open(git, encoding="utf-8") as fh:
+                line = fh.readline()
+        except OSError:
+            return ""
+        if line.lower().startswith("gitdir:"):
+            git = line.split(":", 1)[1].strip()
+            if not os.path.isabs(git):
+                git = os.path.normpath(os.path.join(cwd, git))
+        else:
+            return ""
+    if not os.path.isdir(git):
+        return ""
+    cfg = os.path.join(git, "config")
+    try:
+        with open(cfg, encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return ""
+    in_origin = False
+    for raw in lines:
+        line = raw.strip()
+        if line.startswith("[") and line.endswith("]"):
+            in_origin = line.lower() == '[remote "origin"]'
+            continue
+        if in_origin and line.lower().startswith("url"):
+            _, _, val = line.partition("=")
+            return redact_url(val.strip())
+    return ""
+
+
+def find_git_origin(cwd: str) -> str:
+    if not cwd or cwd == "?":
+        return ""
+    cur = cwd
+    for _ in range(8):
+        url = git_origin_from_dir(cur)
+        if url:
+            return url
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    return ""
+
+
+def session_bits(pid: int | None) -> str:
+    if not pid:
+        return ""
+    env = _proc_environ(pid)
+    parent = _proc_ppid(pid)
+    if parent:
+        for key, val in _proc_environ(parent).items():
+            env.setdefault(key, val)
+    parts: list[str] = []
+    for key in (
+        "SSH_CONNECTION",
+        "SSH_CLIENT",
+        "TERM_PROGRAM",
+        "VSCODE_PID",
+        "CURSOR_AGENT",
+        "TERM",
+    ):
+        val = env.get(key)
+        if val:
+            if len(val) > 80:
+                val = val[:79] + "…"
+            parts.append(f"{key}={val}")
+    return " ".join(parts)
+
+
+def blob_key_type(blob: bytes) -> str:
+    got = ssh_string_at(blob, 0)
+    if not got:
+        return "unknown"
+    return got[0].decode("ascii", "replace")
+
+
+def blob_fingerprint(blob: bytes) -> str:
+    digest = hashlib.sha256(blob).digest()
+    return "SHA256:" + base64.b64encode(digest).decode("ascii").rstrip("=")
+
+
+def sign_request_blob(frame: bytes) -> bytes | None:
+    if len(frame) < 9 or frame[4] != SSH2_AGENTC_SIGN_REQUEST:
+        return None
+    got = ssh_string_at(frame, 5)
+    if not got:
+        return None
+    return got[0]
+
+
+def remember_identities(frame: bytes) -> None:
+    if len(frame) < 9 or frame[4] != SSH2_AGENT_IDENTITIES_ANSWER:
+        return
+    (nkeys,) = struct.unpack_from(">I", frame, 5)
+    offset = 9
+    comments: dict[bytes, str] = {}
+    for _ in range(min(nkeys, 256)):
+        blob_r = ssh_string_at(frame, offset)
+        if not blob_r:
+            return
+        blob, offset = blob_r
+        cmt_r = ssh_string_at(frame, offset)
+        if not cmt_r:
+            return
+        comment, offset = cmt_r
+        comments[blob] = comment.decode("utf-8", "replace")
+    with _ident_lock:
+        _ident_comments.clear()
+        _ident_comments.update(comments)
+
+
+def comment_from_pubfiles(blob: bytes) -> str:
+    b64 = base64.b64encode(blob).decode("ascii")
+    ssh_dir = os.path.join(HOME, ".ssh")
+    try:
+        names = os.listdir(ssh_dir)
+    except OSError:
+        return ""
+    for name in names:
+        if not name.endswith(".pub"):
+            continue
+        path = os.path.join(ssh_dir, name)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                line = fh.readline().strip()
+        except OSError:
+            continue
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == b64:
+            if len(parts) >= 3:
+                return parts[2]
+            return name[:-4]
+    return ""
+
+
+def describe_key(frame: bytes) -> str:
+    blob = sign_request_blob(frame)
+    if blob is None:
+        return "key=?"
+    comment = ""
+    with _ident_lock:
+        comment = _ident_comments.get(blob, "")
+    if not comment:
+        comment = comment_from_pubfiles(blob)
+    if not comment:
+        comment = "-"
+    return f"key={comment} type={blob_key_type(blob)} fp={blob_fingerprint(blob)}"
+
+
+def _trim_log() -> None:
+    try:
+        with open(LOG_PATH, "rb") as fh:
+            data = fh.read()
+        keep = data[- LOG_MAX // 2 :]
+        nl = keep.find(b"\n")
+        if nl >= 0:
+            keep = keep[nl + 1 :]
+        with open(LOG_PATH, "wb") as fh:
+            fh.write(keep)
+            try:
+                os.fchmod(fh.fileno(), 0o600)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
+def write_log(line: str) -> None:
+    text = line.rstrip() + "\n"
+    with _log_lock:
+        try:
+            os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+            with open(LOG_PATH, "ab") as fh:
+                fh.write(text.encode("utf-8", "replace"))
+                try:
+                    os.fchmod(fh.fileno(), 0o600)
+                except OSError:
+                    pass
+                size = fh.tell()
+            if size > LOG_MAX:
+                _trim_log()
+        except OSError:
+            pass
+        try:
+            sys.stderr.write(text)
+            sys.stderr.flush()
+        except OSError:
+            pass
+
+
+def describe_client(pid: int | None) -> str:
+    if not pid:
+        return "pid=- exe=- cwd=- cmdline=- parents=-"
+    cmdline = _proc_cmdline(pid) or "-"
+    exe = _proc_link(pid, "exe") or "-"
+    cwd = _proc_link(pid, "cwd") or "-"
+    parts = [
+        f"pid={pid}",
+        f"exe={exe}",
+        f"cwd={cwd}",
+        f"cmdline={cmdline}",
+        f"parents={pid_chain(pid)}",
+    ]
+    origin = find_git_origin(cwd)
+    if origin:
+        parts.append(f"origin={origin}")
+    sess = session_bits(pid)
+    if sess:
+        parts.append(sess)
+    return " ".join(parts)
+
+
+def log_sign_request(client: socket.socket, frame: bytes) -> None:
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    pid = peer_pid(client)
+    write_log(f"{ts} SIGN_REQUEST {describe_client(pid)} {describe_key(frame)}")
+
+
+def log_test_event(*, force: bool) -> None:
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    write_log(f"{ts} TEST {describe_client(os.getpid())} force={int(force)}")
 
 
 def pipe_backend_to_client(backend: socket.socket, client: socket.socket) -> None:
+    buf = bytearray()
     try:
         while True:
             data = backend.recv(65536)
             if not data:
                 break
             client.sendall(data)
+            buf.extend(data)
+            if len(buf) > MAX_MSG * 2:
+                buf.clear()
+                continue
+            while True:
+                frame = try_pop_frame(buf)
+                if frame is None:
+                    break
+                remember_identities(frame)
     except OSError:
         pass
     finally:
@@ -161,6 +522,7 @@ def handle_client(client: socket.socket) -> None:
             if frame is None:
                 break
             if len(frame) >= 5 and frame[4] == SSH2_AGENTC_SIGN_REQUEST:
+                log_sign_request(client, frame)
                 alert(client)
             backend.sendall(frame)
         t.join(timeout=2)
@@ -177,8 +539,67 @@ def handle_client(client: socket.socket) -> None:
             pass
 
 
+def _ssh_str(payload: bytes) -> bytes:
+    return struct.pack(">I", len(payload)) + payload
+
+
+def self_test() -> int:
+    blob = _ssh_str(b"ssh-ed25519") + _ssh_str(b"\x00" * 32)
+    body = bytes([SSH2_AGENTC_SIGN_REQUEST]) + _ssh_str(blob) + _ssh_str(b"data") + struct.pack(">I", 0)
+    frame = struct.pack(">I", len(body)) + body
+    if sign_request_blob(frame) != blob:
+        print("self-test: sign blob mismatch", file=sys.stderr)
+        return 1
+    if blob_key_type(blob) != "ssh-ed25519":
+        print("self-test: key type mismatch", file=sys.stderr)
+        return 1
+    ans_body = (
+        bytes([SSH2_AGENT_IDENTITIES_ANSWER])
+        + struct.pack(">I", 1)
+        + _ssh_str(blob)
+        + _ssh_str(b"home-personal")
+    )
+    ans = struct.pack(">I", len(ans_body)) + ans_body
+    remember_identities(ans)
+    desc = describe_key(frame)
+    if "key=home-personal" not in desc or "type=ssh-ed25519" not in desc:
+        print(f"self-test: describe_key={desc}", file=sys.stderr)
+        return 1
+    buf = bytearray(ans)
+    popped = try_pop_frame(buf)
+    if popped != ans or buf:
+        print("self-test: try_pop_frame failed", file=sys.stderr)
+        return 1
+    if redact_url("https://user:token@github.com/org/repo.git") != "https://***@github.com/org/repo.git":
+        print("self-test: redact_url failed", file=sys.stderr)
+        return 1
+    with tempfile.TemporaryDirectory() as tmp:
+        git = os.path.join(tmp, ".git")
+        os.makedirs(git)
+        with open(os.path.join(git, "config"), "w", encoding="utf-8") as fh:
+            fh.write('[remote "origin"]\n\turl = git@github.com:acme/repo.git\n')
+        got = git_origin_from_dir(tmp)
+        if got != "git@github.com:acme/repo.git":
+            print(f"self-test: git origin={got}", file=sys.stderr)
+            return 1
+        nested = os.path.join(tmp, "src")
+        os.makedirs(nested)
+        if find_git_origin(nested) != got:
+            print("self-test: find_git_origin walk failed", file=sys.stderr)
+            return 1
+    log_test_event(force=True)
+    if not os.path.isfile(LOG_PATH):
+        print("self-test: log file missing", file=sys.stderr)
+        return 1
+    print("ok")
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] in ("--self-test",):
+        return self_test()
     if len(sys.argv) > 1 and sys.argv[1] in ("--test", "-t"):
+        log_test_event(force=True)
         alert(None, force=True)
         return 0
 
