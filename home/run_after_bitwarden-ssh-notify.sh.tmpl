@@ -15,4 +15,6 @@ fi
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   systemctl --user daemon-reload
   systemctl --user enable --now bitwarden-ssh-notify.service >/dev/null 2>&1 || true
+  # Pick up a new proxy binary without dropping the unit if it was not running.
+  systemctl --user try-restart bitwarden-ssh-notify.service >/dev/null 2>&1 || true
 fi

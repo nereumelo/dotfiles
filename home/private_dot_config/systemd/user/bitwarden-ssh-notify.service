@@ -1,5 +1,5 @@
 [Unit]
-Description=Windows toast when Bitwarden asks to authorize an SSH key
+Description=WezTerm alert when Bitwarden asks to authorize an SSH key
 After=default.target
 
 [Service]

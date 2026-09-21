@@ -185,6 +185,15 @@ ssh-add -l               # empty until SSH-key items exist and the vault is unlo
 
 Bitwarden has no OS notification for SSH authorization. `bitwarden-ssh-notify` proxies the agent socket: a **sign** request writes BEL + OSC 777 into the waiting WezTerm pane (flash, beep, WezTerm notification) and tries to `xdotool` the Bitwarden window forward. `chezmoi apply` enables the systemd user unit. Copy `windows/wezterm.lua` for `visual_bell`. Test in WezTerm: `bitwarden-ssh-notify --test`.
 
+Alerts look random because **any** `SSH2_AGENTC_SIGN_REQUEST` through the proxy fires them: `git fetch/push/pull`, commit/tag signing (`gpg.format=ssh`), IDE auto-fetch (Cursor/VS Code/OpenCode), `ssh-manage`. The Bitwarden desktop UI often says `python3` is requesting `home-personal` — that is the proxy, not the real client (Bitwarden sees the proxy as its SO_PEERCRED peer). The real `git`/`ssh`/IDE PID is in the log:
+
+```bash
+tail -n 50 ~/.local/share/bitwarden-ssh-notify.log
+journalctl --user -u bitwarden-ssh-notify -n 50
+```
+
+Each SIGN_REQUEST is logged (no debounce) with time, peer pid, cmdline, cwd, exe, parent chain, git `origin` if cwd is a repo, and a key comment (`ssh-add -L` cache or matching `~/.ssh/*.pub`). WezTerm notify stays debounced (8s). `SSH_AUTH_SOCK` / `IdentityAgent` and signing defaults are unchanged. After `chezmoi apply`, `run_after_bitwarden-ssh-notify` `try-restart`s the user unit so the new proxy is live.
+
 ### Personal GitHub (`git@github.com:…`)
 
 Private key only in Bitwarden (New item → **SSH key**: import or generate Ed25519). Name the item so the agent comment matches, e.g. `home-personal`.

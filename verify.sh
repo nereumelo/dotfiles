@@ -98,6 +98,12 @@ if [[ -S "$HOME/.bitwarden-ssh-agent-notify.sock" ]]; then
 else
   soft "No notify proxy socket — chezmoi apply / systemctl --user enable --now bitwarden-ssh-notify"
 fi
+_notify_log="$HOME/.local/share/bitwarden-ssh-notify.log"
+if [[ -f "$_notify_log" ]]; then
+  ok "SIGN_REQUEST log $_notify_log ($(wc -l <"$_notify_log" | tr -d ' ') lines)"
+else
+  soft "No SIGN_REQUEST log yet — git/ssh/commit through the proxy writes $_notify_log (journalctl --user -u bitwarden-ssh-notify)"
+fi
 if have python3; then ok "python3 → $(command -v python3)"; else soft "python3 missing — bitwarden-ssh-notify"; fi
 if have xdotool; then ok "xdotool → $(command -v xdotool)"; else soft "xdotool missing — cannot raise Bitwarden window"; fi
 if [[ -f "$HOME/.ssh/config" ]] && grep -qE '^Include[[:space:]]+config\.local' "$HOME/.ssh/config"; then
