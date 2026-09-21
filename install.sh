@@ -207,13 +207,15 @@ install_opencode_v2() {
 install_opencode_v2 || warn "OpenCode 2 install failed (non-fatal)"
 
 # --- SSH prep ---
-log "SSH prep (dirs, stable .pub names, config.local + IdentityFile)"
-# shellcheck source=home/private_dot_config/bash/functions.sh
-. "$REPO/home/private_dot_config/bash/functions.sh"
+# Hosts and IdentityFile come from ssh-manage after Bitwarden is unlocked.
+# Bootstrap only makes ~/.ssh usable (Include config.local must not fail).
+log "SSH prep (dirs, stable .pub names)"
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
+[[ -e "$HOME/.ssh/config.local" ]] || touch "$HOME/.ssh/config.local"
+chmod 600 "$HOME/.ssh/config.local"
 
-# Stable public key names
+# Stable public key names (git signing templates look for these files).
 if [[ -f "$HOME/.ssh/home-personal.pub" ]]; then
   :
 elif [[ -f "$HOME/.ssh/id_ed25519.pub" ]]; then
@@ -225,42 +227,6 @@ if [[ ! -f "$HOME/.ssh/vps.pub" ]]; then
     cp -n "$HOME/.ssh/vps_srv1938886.pub" "$HOME/.ssh/vps.pub" || true
     log "Copied vps_srv1938886.pub → vps.pub"
   fi
-fi
-
-_ssh_ensure_config_local
-
-# Seed Host github.com only if missing. Existing HostName/User stay
-# (ssh.github.com, GitHub Enterprise, already-customized aliases).
-_ssh_seed_host github.com github.com git
-# OpenSSH expands ~ in IdentityFile; do not use $HOME here.
-# shellcheck disable=SC2088
-if [[ -f "$HOME/.ssh/home-personal.pub" ]]; then
-  _ssh_set_identity_file_if_missing github.com "~/.ssh/home-personal.pub"
-fi
-
-# Create Host vps from leftover config if missing; never clobber an existing HostName.
-vps_hn="$(_ssh_local_field vps HostName || true)"
-vps_user="$(_ssh_local_field vps User || true)"
-if [[ -z "$vps_hn" && -f "$HOME/.ssh/config" ]]; then
-  vps_hn="$(_ssh_local_field vps HostName "$HOME/.ssh/config" || true)"
-fi
-if [[ -z "$vps_user" && -f "$HOME/.ssh/config" ]]; then
-  vps_user="$(_ssh_local_field vps User "$HOME/.ssh/config" || true)"
-fi
-if _ssh_host_in_local vps; then
-  _ssh_ensure_host_agent vps
-  log "Host vps already in ~/.ssh/config.local (HostName $(_ssh_local_field vps HostName || true))"
-elif [[ -n "$vps_hn" && -n "$vps_user" ]]; then
-  ssh-host-local vps "$vps_hn" "$vps_user" >/dev/null
-  log "Host vps in ~/.ssh/config.local (HostName $vps_hn User $vps_user)"
-fi
-if [[ -f "$HOME/.ssh/vps.pub" ]]; then
-  # shellcheck disable=SC2088
-  _ssh_set_identity_file_if_missing vps "~/.ssh/vps.pub"
-fi
-if [[ -f "$HOME/.ssh/work.pub" ]]; then
-  # shellcheck disable=SC2088
-  _ssh_set_identity_file_if_missing github.com-work "~/.ssh/work.pub"
 fi
 
 # --- Backup ---
@@ -345,9 +311,9 @@ Install finished.
 Next (manual):
   1. Unlock Arch Bitwarden desktop; enable SSH agent
   2. Import private keys into Bitwarden SSH; leave only .pub in ~/.ssh/
-  3. ssh-host-local vps YOUR_IP_OR_DNS YOUR_USER
-     ssh-pub github.com home-personal
-     ssh-pub vps vps
+  3. ssh-manage
+     1) Set Host — github.com, vps, extra aliases
+     2) Set Public Key — pick Host, pick Bitwarden key
   4. Add home-personal.pub as a GitHub/GitLab Signing key
   5. Open a new Windows WezTerm window (docker group + bashrc)
   6. Until BW agent is ready, use: git commit --no-gpg-sign

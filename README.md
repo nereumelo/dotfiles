@@ -31,7 +31,7 @@ dotfiles/
 | `private_dot_config/git/config-work.tmpl` | `~/.config/git/config-work` |
 | `private_dot_config/nvim/` | `~/.config/nvim/` |
 | `private_dot_config/opencode/tui.json.tmpl` | `~/.config/opencode/tui.json` |
-| `private_dot_ssh/config.tmpl` | `~/.ssh/config` (`Include config.local`, then `IdentityFile` from `ssh-pub`) |
+| `private_dot_ssh/config.tmpl` | `~/.ssh/config` (`Include config.local`, then `IdentityFile` from `ssh-manage`) |
 | `dot_local/bin/executable_theme` | `~/.local/bin/theme` |
 | `dot_local/bin/executable_windows-open` | `~/.local/bin/windows-open` (`xdg-open` shim too) |
 
@@ -131,8 +131,8 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 - Personal identity from `.chezmoidata.toml`; work via `includeIf "gitdir:~/work/"` → `~/.config/git/config-work`
 - `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
 - SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK` → `~/.bitwarden-ssh-agent-notify.sock` (proxy) → `~/.bitwarden-ssh-agent.sock`
-- `~/.ssh/config` is chezmoi-managed. It `Include`s gitignored `~/.ssh/config.local` (`HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`) and then inlines `IdentityFile` from `~/.ssh/config.identity` (`ssh-pub`). HostName/User are not in git.
-- `ssh-host-local <host> <hostname> <user>` writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent-notify.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing
+- `~/.ssh/config` is chezmoi-managed. It `Include`s gitignored `~/.ssh/config.local` (`HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`) and then inlines `IdentityFile` from `~/.ssh/config.identity`. HostName/User are not in git.
+- `ssh-manage` (no args) is the only setup command. **1** Set Host writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent-notify.sock` and `IdentitiesOnly yes` are always set). **2** Set Public Key dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing (Set Host first). Host list comes from `config.local`, key list from Bitwarden.
 - Without that `.pub` on disk, OpenSSH `IdentitiesOnly` ignores the agent (`identity file … type -1`, never `Offering public key`)
 - Private keys stay in the **Arch** Bitwarden desktop SSH agent. There is no headless Bitwarden SSH daemon — the app must stay open and unlocked. `bw` CLI cannot sign SSH
 - Site passwords (browser) are the Windows Bitwarden extension / same account; they are not this socket
@@ -161,48 +161,39 @@ Bitwarden has no OS notification for SSH authorization. `bitwarden-ssh-notify` p
 
 One SSH alias per `Host` block. `<host>` is the alias you type (`ssh vps`, `git@github.com-acme`); `<hostname>` is the real name (`github.com`, `ssh.github.com`, an IP).
 
-`install.sh` seeds `Host github.com` **only if it is missing**. If that block already has `HostName ssh.github.com` (or a GitHub Enterprise name), install leaves it. `IdentityAgent` and `IdentitiesOnly` are not function arguments. Re-running is a no-op: `Port` and other extra keys in `config.local` stay put.
+`install.sh` does not seed Hosts. `IdentityAgent` and `IdentitiesOnly` are not prompts. Re-running Set Host is a no-op: `Port` and other extra keys in `config.local` stay put.
 
 ```bash
-ssh-host-local github.com github.com git          # skipped by install.sh if Host github.com exists
-ssh-host-local vps YOUR_IP_OR_DNS YOUR_REMOTE_USER
-ssh-host-local xpto example.com alice
+ssh-manage
+# 1) Set Host — host / hostname / user
+# 2) Set Public Key — pick a Host from config.local, pick a Bitwarden key comment from ssh-add -L
 ```
 
-Then bind a Bitwarden SSH-item comment to that Host:
-
-```bash
-ssh-pub github.com home-personal    # → ~/.ssh/home-personal.pub + IdentityFile in ~/.ssh/config
-ssh-pub vps vps
-ssh-pub xpto xpto                   # errors if Host xpto is missing
-```
-
-`ssh-pub` is idempotent when the `.pub` and `IdentityFile` already match. It writes `IdentityFile` via `~/.ssh/config.identity` and runs `chezmoi apply` so `~/.ssh/config` shows the key (and git signing templates for `home-personal` / `work`).
+Set Public Key is idempotent when the `.pub` and `IdentityFile` already match. It writes `IdentityFile` via `~/.ssh/config.identity` and runs `chezmoi apply` so `~/.ssh/config` shows the key (and git signing templates for `home-personal` / `work`).
 
 ### Extra GitHub accounts / orgs
 
 `github.com` and `github.com-acme` are different Host aliases. Both can use `HostName github.com` with different keys. Remotes must use the alias, not `git@github.com`, or SSH would pick the `Host github.com` key.
 
 ```bash
-ssh-host-local github.com github.com git
-ssh-pub github.com home-personal
+ssh-manage   # Set Host: github.com / github.com / git
+ssh-manage   # Set Public Key: github.com → home-personal
 
-ssh-host-local github.com-acme github.com git
-ssh-pub github.com-acme acme
+ssh-manage   # Set Host: github.com-acme / github.com / git
+ssh-manage   # Set Public Key: github.com-acme → acme
 
-ssh-host-local github.com-work github.com git
-ssh-pub github.com-work work
+ssh-manage   # Set Host: github.com-work / github.com / git
+ssh-manage   # Set Public Key: github.com-work → work
 
 git clone git@github.com-acme:acme/repo.git
 # git remote set-url origin git@github.com-acme:acme/repo.git
 ```
 
-GitHub over 443 / Enterprise — change only `<hostname>` (and keep `Port` if you add it; `ssh-host-local` will not drop it):
+GitHub over 443 / Enterprise — Set Host with a different hostname (keep `Port` if you add it; Set Host will not drop it):
 
 ```bash
-ssh-host-local github.com ssh.github.com git
-ssh-host-local ghe github.mycompany.com git
-ssh-pub ghe work
+ssh-manage   # github.com / ssh.github.com / git
+ssh-manage   # ghe / github.mycompany.com / git, then Set Public Key → work
 ```
 
 ### GitHub (`ssh git@github.com` + commit signing)
@@ -210,8 +201,8 @@ ssh-pub ghe work
 Private key only in Bitwarden (New item → **SSH key**: import or generate Ed25519). Name the item so the agent comment matches, e.g. `home-personal`.
 
 ```bash
-ssh-host-local github.com github.com git   # skip if install.sh already seeded it
-ssh-pub github.com home-personal
+ssh-manage                                 # Set Host: github.com / github.com / git
+ssh-manage                                 # Set Public Key: github.com → home-personal
 \cat ~/.ssh/home-personal.pub              # paste this line on GitHub
 ```
 
@@ -228,7 +219,7 @@ ssh -T git@github.com
 # exit status 1 is normal (no shell)
 ```
 
-If it still fails, `ssh -o IdentitiesOnly=no -T git@github.com` tests the agent without the `.pub`. After `ssh-pub`, drop the `-o`.
+If it still fails, `ssh -o IdentitiesOnly=no -T git@github.com` tests the agent without the `.pub`. After Set Public Key, drop the `-o`.
 
 Until the agent is unlocked: `git commit --no-gpg-sign`.
 
@@ -237,8 +228,8 @@ Until the agent is unlocked: `git commit --no-gpg-sign`.
 Use a **separate** Bitwarden SSH-key item (e.g. `vps`), not `home-personal`, unless that exact public key is also in the server `authorized_keys`.
 
 ```bash
-ssh-host-local vps YOUR_IP_OR_DNS YOUR_REMOTE_USER
-ssh-pub vps vps
+ssh-manage   # Set Host: vps / YOUR_IP_OR_DNS / YOUR_REMOTE_USER
+ssh-manage   # Set Public Key: vps → vps
 ```
 
 Install the **same** public line on the server (`~/.ssh/authorized_keys` for that User), then:
@@ -247,7 +238,7 @@ Install the **same** public line on the server (`~/.ssh/authorized_keys` for tha
 ssh vps
 ```
 
-Bitwarden must be unlocked; **Allow** if the agent prompts. `install.sh` may copy a legacy `vps_srv1938886.pub` → `vps.pub` when present. It will not overwrite an existing `Host vps` HostName/User. Delete leftover **private** key files from `~/.ssh/` after import.
+Bitwarden must be unlocked; **Allow** if the agent prompts. `install.sh` may copy a legacy `vps_srv1938886.pub` → `vps.pub` when present. It does not write HostName/User. Delete leftover **private** key files from `~/.ssh/` after import.
 
 ## WezTerm (Windows → WSL:arch)
 
@@ -266,6 +257,7 @@ CLI tools (`claude`, `gh`, `xdg-open`) cannot see `cmd.exe` because `appendWindo
 
 Interactive bash helpers in `~/.config/bash/functions.sh`:
 
+- `ssh-manage` — SSH Host in `config.local` and public key / `IdentityFile` (no args; Bitwarden agent)
 - `copy` — clipboard via **xclip** (X11) or **wl-copy** (Wayland). WSLg mirrors that to the Windows clipboard. Source encoding is detected (`file --mime-encoding`) and converted to UTF-8 **without a BOM** (a leading U+FEFF was the `clip.exe` UTF-16LE prefix). `copy readme.md` or `cat readme.md | copy` (`cat` is `bat -p`; `copy` reads stdin/`command cat`, not bat). Needs `DISPLAY`/`WAYLAND_DISPLAY` (WSLg).
 - `open` — Windows Explorer (`explorer.exe` is not on PATH). `open` / `open .` is the current directory; `open ~/me/dotfiles` that folder. A file path uses `explorer /select,` so Explorer highlights it.
 
