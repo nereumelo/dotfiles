@@ -1,5 +1,10 @@
 # Optional work Git profile (loaded via includeIf gitdir:~/work/)
-{{- if and .git.work.enabled .git.work.name .git.work.email }}
+{{- $workOn := and .git.work.enabled .git.work.name .git.work.email -}}
+{{- $sshHost := "" -}}
+{{- if and .git.work.enabled (index .git.work "ssh_host") -}}
+{{- $sshHost = .git.work.ssh_host -}}
+{{- end -}}
+{{- if $workOn }}
 
 [user]
 	name = {{ .git.work.name | quote }}
@@ -7,12 +12,23 @@
 {{- if stat (joinPath .chezmoi.homeDir ".ssh/work.pub") }}
 	signingkey = {{ joinPath .chezmoi.homeDir ".ssh/work.pub" | quote }}
 {{- end }}
-{{- else }}
+{{- end }}
+{{- if $sshHost }}
+
+# git@github.com:... under ~/work/ uses Host {{ $sshHost }} (work key), not Host github.com.
+[url "git@{{ $sshHost }}:"]
+	insteadOf = git@github.com:
+	insteadOf = ssh://git@github.com/
+	insteadOf = https://github.com/
+{{- end }}
+{{- if not (or $workOn $sshHost) }}
 
 # Work profile disabled. Enable in .chezmoidata.toml:
 #   [git.work]
 #   enabled = true
 #   name = "..."
 #   email = "..."
+#   ssh_host = "github.com-acme"
+# ssh-manage: Set Host github.com-acme / github.com / git, then Set Public Key → work.
 # and place ~/.ssh/work.pub when signing with a work key.
 {{- end }}
