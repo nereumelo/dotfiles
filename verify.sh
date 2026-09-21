@@ -101,6 +101,11 @@ if [[ -f "$HOME/.ssh/config" ]] && grep -qE '^Include[[:space:]]+config\.local' 
 else
   soft "$HOME/.ssh/config does not Include config.local (chezmoi apply?)"
 fi
+if grep -qE '^ssh-manage\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; then
+  ok "ssh-manage() in functions.sh"
+else
+  soft "ssh-manage() missing — chezmoi apply?"
+fi
 if [[ -f "$HOME/.ssh/config.local" ]] && grep -qE '^Host[[:space:]]+github\.com([[:space:]]|$)' "$HOME/.ssh/config.local"; then
   ok "config.local has Host github.com"
 else

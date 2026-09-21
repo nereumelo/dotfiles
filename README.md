@@ -132,7 +132,7 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 - `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
 - SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK` → `~/.bitwarden-ssh-agent-notify.sock` (proxy) → `~/.bitwarden-ssh-agent.sock`
 - `~/.ssh/config` is chezmoi-managed. It `Include`s gitignored `~/.ssh/config.local` (`HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`) and then inlines `IdentityFile` from `~/.ssh/config.identity` (`ssh-pub`). HostName/User are not in git.
-- `ssh-host-local <host> <hostname> <user>` writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent-notify.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing
+- `ssh-host-local <host> <hostname> <user>` writes that Host in `config.local` (`IdentityAgent ~/.bitwarden-ssh-agent-notify.sock` and `IdentitiesOnly yes` are always set). `ssh-pub <host> <key>` dumps the matching agent key to `~/.ssh/<key>.pub` and sets `IdentityFile` on `~/.ssh/config` — it errors if the Host is missing. `ssh-manage` (no args) prompts: **1** Set Host, **2** Set Public Key (host list from `config.local`, key list from Bitwarden)
 - Without that `.pub` on disk, OpenSSH `IdentitiesOnly` ignores the agent (`identity file … type -1`, never `Offering public key`)
 - Private keys stay in the **Arch** Bitwarden desktop SSH agent. There is no headless Bitwarden SSH daemon — the app must stay open and unlocked. `bw` CLI cannot sign SSH
 - Site passwords (browser) are the Windows Bitwarden extension / same account; they are not this socket
@@ -162,6 +162,8 @@ Bitwarden has no OS notification for SSH authorization. `bitwarden-ssh-notify` p
 One SSH alias per `Host` block. `<host>` is the alias you type (`ssh vps`, `git@github.com-acme`); `<hostname>` is the real name (`github.com`, `ssh.github.com`, an IP).
 
 `install.sh` seeds `Host github.com` **only if it is missing**. If that block already has `HostName ssh.github.com` (or a GitHub Enterprise name), install leaves it. `IdentityAgent` and `IdentitiesOnly` are not function arguments. Re-running is a no-op: `Port` and other extra keys in `config.local` stay put.
+
+Interactive (no args): `ssh-manage` — **1)** Set Host (prompts host / hostname / user) **2)** Set Public Key (pick a Host from `config.local`, pick a Bitwarden key comment from `ssh-add -L`). Scripts still use the CLI:
 
 ```bash
 ssh-host-local github.com github.com git          # skipped by install.sh if Host github.com exists

@@ -640,3 +640,151 @@ ssh-pub() {
     command ssh-keygen -lf "$dest"
   fi
 }
+
+_ssh_tty() {
+  if [[ -r /dev/tty && -w /dev/tty ]]; then
+    printf '%s\n' /dev/tty
+  else
+    return 1
+  fi
+}
+
+_ssh_read_text() {
+  local field="$1" desc="$2" value=""
+  local tty
+  tty="$(_ssh_tty)" || {
+    printf 'ssh-manage: need a tty\n' >&2
+    return 1
+  }
+  printf '%s (text) %s: ' "$field" "$desc" >"$tty"
+  IFS= read -r -e value <"$tty" || return 1
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  if [[ -z "$value" ]]; then
+    printf 'ssh-manage: %s is required\n' "$field" >&2
+    return 1
+  fi
+  printf '%s\n' "$value"
+}
+
+_ssh_pick_line() {
+  local field="$1" desc="$2"
+  local -a items=()
+  local line tty n choice
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && items+=("$line")
+  done
+  if ((${#items[@]} == 0)); then
+    printf 'ssh-manage: no %s to choose\n' "$field" >&2
+    return 1
+  fi
+  tty="$(_ssh_tty)" || {
+    printf 'ssh-manage: need a tty\n' >&2
+    return 1
+  }
+  if command -v fzf >/dev/null 2>&1; then
+    line="$(printf '%s\n' "${items[@]}" | fzf --prompt="${field} (list) " --header="$desc" \
+      --height=40% --reverse --no-multi)" || return 1
+    [[ -n "$line" ]] || return 1
+    printf '%s\n' "$line"
+    return 0
+  fi
+  printf '%s (list) %s\n' "$field" "$desc" >"$tty"
+  n=1
+  for line in "${items[@]}"; do
+    printf '  %d) %s\n' "$n" "$line" >"$tty"
+    n=$((n + 1))
+  done
+  printf 'Select [1-%d]: ' "${#items[@]}" >"$tty"
+  IFS= read -r -e choice <"$tty" || return 1
+  if [[ ! "$choice" =~ ^[1-9][0-9]*$ ]] || ((choice < 1 || choice > ${#items[@]})); then
+    printf 'ssh-manage: invalid selection\n' >&2
+    return 1
+  fi
+  printf '%s\n' "${items[$((choice - 1))]}"
+}
+
+_ssh_list_local_hosts() {
+  local f
+  f="$(_ssh_config_local)"
+  [[ -f "$f" ]] || return 1
+  awk '
+    $1 == "Host" {
+      for (i = 2; i <= NF; i++) {
+        if ($i == "" || $i ~ /^#/) break
+        if ($i ~ /[*?]/) continue
+        print $i
+      }
+    }
+  ' "$f" | awk 'NF && !seen[$0]++'
+}
+
+_ssh_list_agent_key_comments() {
+  local sock lines
+  sock="${SSH_AUTH_SOCK:-}"
+  if [[ ! -S "$sock" ]]; then
+    if [[ -S "${HOME}/.bitwarden-ssh-agent-notify.sock" ]]; then
+      sock="${HOME}/.bitwarden-ssh-agent-notify.sock"
+    else
+      sock="${HOME}/.bitwarden-ssh-agent.sock"
+    fi
+  fi
+  if [[ ! -S "$sock" ]]; then
+    printf 'ssh-manage: Bitwarden SSH agent socket missing — unlock Arch Bitwarden\n' >&2
+    return 1
+  fi
+  local old_sock="${SSH_AUTH_SOCK:-}"
+  export SSH_AUTH_SOCK="$sock"
+  if ! lines="$(ssh-add -L 2>/dev/null)"; then
+    [[ -n "$old_sock" ]] && export SSH_AUTH_SOCK="$old_sock"
+    printf 'ssh-manage: ssh-add -L failed (unlock Bitwarden and Allow the agent prompt)\n' >&2
+    return 1
+  fi
+  [[ -n "$old_sock" ]] && export SSH_AUTH_SOCK="$old_sock"
+  printf '%s\n' "$lines" | awk '
+    NF >= 3 {
+      comment = $3
+      for (i = 4; i <= NF; i++) comment = comment " " $i
+      if (comment ~ /^[A-Za-z0-9._-]+$/) print comment
+    }
+  ' | awk 'NF && !seen[$0]++'
+}
+
+# Interactive wrapper for ssh-host-local / ssh-pub (no args).
+ssh-manage() {
+  if [[ $# -ne 0 ]]; then
+    printf 'usage: ssh-manage\n' >&2
+    printf '  1) Set Host        — ssh-host-local (host / hostname / user)\n' >&2
+    printf '  2) Set Public Key  — ssh-pub (host from config.local, key from Bitwarden)\n' >&2
+    return 2
+  fi
+  local tty mode host hostname user key
+  tty="$(_ssh_tty)" || {
+    printf 'ssh-manage: need a tty\n' >&2
+    return 1
+  }
+  printf 'ssh-manage\n' >"$tty"
+  printf '  1) Set Host\n' >"$tty"
+  printf '  2) Set Public Key\n' >"$tty"
+  printf 'Mode [1/2]: ' >"$tty"
+  IFS= read -r -e mode <"$tty" || return 1
+  case "$mode" in
+    1)
+      host="$(_ssh_read_text host 'SSH alias you type (vps, github.com)')" || return
+      hostname="$(_ssh_read_text hostname 'real name (DNS, IP, or ssh.github.com)')" || return
+      user="$(_ssh_read_text user 'remote user (git, alice)')" || return
+      ssh-host-local "$host" "$hostname" "$user"
+      ;;
+    2)
+      host="$(_ssh_list_local_hosts | _ssh_pick_line host 'Host aliases in ~/.ssh/config.local (Set Host first)')" || return
+      host="${host%% *}"
+      key="$(_ssh_list_agent_key_comments | _ssh_pick_line key 'Bitwarden SSH key comment from the agent')" || return
+      key="${key%% *}"
+      ssh-pub "$host" "$key"
+      ;;
+    *)
+      printf 'ssh-manage: choose 1 or 2\n' >&2
+      return 2
+      ;;
+  esac
+}

@@ -3,6 +3,7 @@
 # IdentityFile → ssh-pub writes ~/.ssh/config.identity; inlined here so it shows in this file.
 # ssh-host-local <host> <hostname> <user>
 # ssh-pub <host> <key>
+# ssh-manage  (interactive: Set Host / Set Public Key)
 Include config.local
 {{- $idf := joinPath .chezmoi.homeDir ".ssh/config.identity" -}}
 {{- if stat $idf }}
