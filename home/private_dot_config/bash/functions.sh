@@ -614,6 +614,13 @@ _ssh_tty() {
   fi
 }
 
+# ble.sh wraps `read` / `read -e` (`__ble_input=`). Use bash builtin, no readline.
+_ssh_read_line() {
+  local tty="$1" __ssh_line=""
+  IFS= builtin read -r __ssh_line <"$tty" || return 1
+  printf '%s\n' "$__ssh_line"
+}
+
 _ssh_read_text() {
   local cmd="$1" field="$2" desc="$3" value=""
   local tty
@@ -622,7 +629,7 @@ _ssh_read_text() {
     return 1
   }
   printf '%s (text) %s: ' "$field" "$desc" >"$tty"
-  IFS= read -r -e value <"$tty" || return 1
+  value="$(_ssh_read_line "$tty")" || return 1
   value="${value#"${value%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
   if [[ -z "$value" ]]; then
@@ -636,7 +643,7 @@ _ssh_pick_line() {
   local cmd="$1" field="$2" desc="$3"
   local -a items=()
   local line tty n choice
-  while IFS= read -r line; do
+  while IFS= builtin read -r line; do
     [[ -n "$line" ]] && items+=("$line")
   done
   if ((${#items[@]} == 0)); then
@@ -661,7 +668,7 @@ _ssh_pick_line() {
     n=$((n + 1))
   done
   printf 'Select [1-%d]: ' "${#items[@]}" >"$tty"
-  IFS= read -r -e choice <"$tty" || return 1
+  choice="$(_ssh_read_line "$tty")" || return 1
   if [[ ! "$choice" =~ ^[1-9][0-9]*$ ]] || ((choice < 1 || choice > ${#items[@]})); then
     printf '%s: invalid selection\n' "$cmd" >&2
     return 1
@@ -732,7 +739,9 @@ ssh-manage() {
   printf '  1) Set Host\n' >"$tty"
   printf '  2) Set Public Key\n' >"$tty"
   printf 'Mode [1/2]: ' >"$tty"
-  IFS= read -r -e mode <"$tty" || return 1
+  mode="$(_ssh_read_line "$tty")" || return 1
+  mode="${mode#"${mode%%[![:space:]]*}"}"
+  mode="${mode%"${mode##*[![:space:]]}"}"
   case "$mode" in
     1)
       host="$(_ssh_read_text ssh-manage host 'SSH alias you type (vps, github.com)')" || return
