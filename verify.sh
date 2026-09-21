@@ -106,19 +106,22 @@ if grep -qE '^ssh-manage\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; the
 else
   soft "ssh-manage() missing — chezmoi apply?"
 fi
+if grep -qE '^ssh-host-local\(\)|^ssh-pub\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; then
+  soft "ssh-host-local/ssh-pub still public — chezmoi apply? use ssh-manage"
+fi
 if [[ -f "$HOME/.ssh/config.local" ]] && grep -qE '^Host[[:space:]]+github\.com([[:space:]]|$)' "$HOME/.ssh/config.local"; then
   ok "config.local has Host github.com"
 else
-  soft "config.local missing Host github.com — ssh-host-local github.com github.com git"
+  soft "config.local missing Host github.com — ssh-manage (Set Host)"
 fi
 if [[ -f "$HOME/.ssh/home-personal.pub" ]]; then
   if grep -qE '^[[:space:]]*IdentityFile[[:space:]]+' "$HOME/.ssh/config" 2>/dev/null; then
-    ok "IdentityFile in ~/.ssh/config (ssh-pub)"
+    ok "IdentityFile in ~/.ssh/config (ssh-manage)"
   else
-    soft "home-personal.pub present but IdentityFile not in ~/.ssh/config — ssh-pub github.com home-personal"
+    soft "home-personal.pub present but IdentityFile not in ~/.ssh/config — ssh-manage (Set Public Key)"
   fi
   if grep -qE '^[[:space:]]*IdentityFile[[:space:]]+' "$HOME/.ssh/config.local" 2>/dev/null; then
-    soft "IdentityFile still in config.local — ssh-pub to move it into config"
+    soft "IdentityFile still in config.local — ssh-manage Set Public Key to move it into config"
   fi
 fi
 if [[ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then

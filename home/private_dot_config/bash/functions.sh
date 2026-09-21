@@ -172,7 +172,7 @@ open() {
 
 # HostName/User/IdentityAgent/IdentitiesOnly live in ~/.ssh/config.local (not git).
 # IdentityFile lives in ~/.ssh/config.identity and is inlined into ~/.ssh/config
-# by chezmoi (ssh-pub). One Host alias per block.
+# by chezmoi (ssh-manage Set Public Key). One Host alias per block.
 
 # Tilde is for OpenSSH config (IdentityAgent ~/.bitwarden-ssh-agent-notify.sock), not bash expansion.
 # shellcheck disable=SC2088
@@ -392,7 +392,7 @@ _ssh_rewrite_local_host() {
       if (key == "HostName" || key == "User" || key == "IdentityAgent" || key == "IdentitiesOnly") {
         vals[key] = rest
       } else if (key == "IdentityFile") {
-        # IdentityFile belongs in ~/.ssh/config.identity (ssh-pub), not config.local
+        # IdentityFile belongs in ~/.ssh/config.identity (ssh-manage), not config.local
       } else {
         extras[++n_extra] = $0
       }
@@ -426,9 +426,9 @@ _ssh_rewrite_local_host() {
   chmod 600 "$f"
 }
 
-ssh-host-local() {
+_ssh_host_local() {
   if [[ $# -ne 3 ]]; then
-    printf 'usage: ssh-host-local <host> <hostname> <user>\n' >&2
+    printf 'usage: _ssh_host_local <host> <hostname> <user>\n' >&2
     printf 'IdentityAgent (%s) and IdentitiesOnly (yes) are always set.\n' "$_SSH_IDENTITY_AGENT" >&2
     printf 'Re-run is a no-op when HostName/User/agent already match (Port and extra keys kept).\n' >&2
     return 2
@@ -514,11 +514,6 @@ _ssh_rewrite_identity_host() {
   chmod 600 "$f"
 }
 
-_ssh_ensure_host_agent() {
-  local host="$1"
-  _ssh_rewrite_local_host agent "$host"
-}
-
 # IdentityFile goes in ~/.ssh/config.identity (inlined into ~/.ssh/config).
 # Also drop a leftover IdentityFile from config.local so Include does not win.
 _ssh_set_identity_file() {
@@ -529,39 +524,9 @@ _ssh_set_identity_file() {
   fi
 }
 
-_ssh_set_identity_file_if_missing() {
-  local host="$1" identity_file="$2"
-  _ssh_host_in_local "$host" || return 0
-  local from_idf from_local
-  from_idf="$(_ssh_local_field "$host" IdentityFile "$(_ssh_config_identity)" || true)"
-  from_local="$(_ssh_local_field "$host" IdentityFile || true)"
-  if [[ -n "$from_idf" ]]; then
-    if [[ -n "$from_local" ]]; then
-      _ssh_rewrite_local_host agent "$host" || true
-    fi
-    return 0
-  fi
-  if [[ -n "$from_local" ]]; then
-    _ssh_set_identity_file "$host" "$from_local"
-    return 0
-  fi
-  _ssh_set_identity_file "$host" "$identity_file"
-}
-
-# Create Host only if missing. Existing HostName/User (ssh.github.com, GHE, …) are kept.
-_ssh_seed_host() {
-  local host="$1" hostname="$2" user="$3"
-  _ssh_ensure_config_local || return
-  if _ssh_host_in_local "$host"; then
-    _ssh_ensure_host_agent "$host"
-  else
-    ssh-host-local "$host" "$hostname" "$user" >/dev/null
-  fi
-}
-
-ssh-pub() {
+_ssh_pub() {
   if [[ $# -ne 2 ]]; then
-    printf 'usage: ssh-pub <host> <key>\n' >&2
+    printf 'usage: _ssh_pub <host> <key>\n' >&2
     printf 'Writes ~/.ssh/<key>.pub from the agent and IdentityFile on Host <host>\n' >&2
     printf 'into ~/.ssh/config (via config.identity + chezmoi). Host must exist in config.local.\n' >&2
     return 2
@@ -569,19 +534,19 @@ ssh-pub() {
   local host="$1" key="$2"
   _ssh_require_token host "$host" || return
   if [[ ! "$key" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    printf 'ssh-pub: key must be a simple name (A-Z a-z 0-9 . _ -)\n' >&2
+    printf 'ssh-manage: key must be a simple name (A-Z a-z 0-9 . _ -)\n' >&2
     return 2
   fi
   _ssh_ensure_config_local || return
   if ! _ssh_host_in_local "$host"; then
-    printf 'ssh-pub: host %s is not in ~/.ssh/config.local\n' "$host" >&2
-    printf 'Set it up first: ssh-host-local %s <hostname> <user>\n' "$host" >&2
+    printf 'ssh-manage: host %s is not in ~/.ssh/config.local\n' "$host" >&2
+    printf 'Set it up first: ssh-manage → 1) Set Host\n' >&2
     return 1
   fi
 
   local sock="${SSH_AUTH_SOCK:-${HOME}/.bitwarden-ssh-agent.sock}"
   if [[ ! -S "$sock" ]]; then
-    printf 'ssh-pub: Bitwarden SSH agent socket missing — unlock Arch Bitwarden\n' >&2
+    printf 'ssh-manage: Bitwarden SSH agent socket missing — unlock Arch Bitwarden\n' >&2
     return 1
   fi
   local old_sock="${SSH_AUTH_SOCK:-}"
@@ -590,14 +555,14 @@ ssh-pub() {
   local lines matches exact chosen count dest want
   if ! lines="$(ssh-add -L 2>/dev/null)"; then
     [[ -n "$old_sock" ]] && export SSH_AUTH_SOCK="$old_sock"
-    printf 'ssh-pub: ssh-add -L failed (unlock Bitwarden and Allow the agent prompt)\n' >&2
+    printf 'ssh-manage: ssh-add -L failed (unlock Bitwarden and Allow the agent prompt)\n' >&2
     return 1
   fi
   [[ -n "$old_sock" ]] && export SSH_AUTH_SOCK="$old_sock"
 
   matches="$(printf '%s\n' "$lines" | grep -F -i -- "$key" || true)"
   if [[ -z "$matches" ]]; then
-    printf 'ssh-pub: no agent key comment matches %s\n' "$key" >&2
+    printf 'ssh-manage: no agent key comment matches %s\n' "$key" >&2
     printf 'List comments with: ssh-add -L\n' >&2
     return 1
   fi
@@ -610,7 +575,7 @@ ssh-pub() {
   fi
   count="$(printf '%s\n' "$matches" | grep -c .)"
   if [[ "$count" -gt 1 ]]; then
-    printf 'ssh-pub: multiple agent keys match %s; use a more specific Bitwarden comment:\n' "$key" >&2
+    printf 'ssh-manage: multiple agent keys match %s; use a more specific Bitwarden comment:\n' "$key" >&2
     printf '%s\n' "$matches" | awk '{ print "  " $NF }' >&2
     return 1
   fi
@@ -621,7 +586,7 @@ ssh-pub() {
   want="~/.ssh/${key}.pub"
 
   if [[ -f "$dest" ]] && cmp -s <(printf '%s\n' "$chosen") "$dest" && _ssh_identity_points_to "$host" "$want"; then
-    printf 'ssh-pub: %s already on Host %s\n' "$dest" "$host"
+    printf 'ssh-manage: %s already on Host %s\n' "$dest" "$host"
     return 0
   fi
 
@@ -632,7 +597,7 @@ ssh-pub() {
   _ssh_set_identity_file "$host" "$want" || return
 
   if command -v chezmoi >/dev/null 2>&1; then
-    chezmoi apply || printf 'ssh-pub: wrote the key; chezmoi apply failed (config IdentityFile / git signing)\n' >&2
+    chezmoi apply || printf 'ssh-manage: wrote the key; chezmoi apply failed (config IdentityFile / git signing)\n' >&2
   fi
 
   printf 'Wrote %s and IdentityFile on Host %s\n' "$dest" "$host"
@@ -750,12 +715,12 @@ _ssh_list_agent_key_comments() {
   ' | awk 'NF && !seen[$0]++'
 }
 
-# Interactive wrapper for ssh-host-local / ssh-pub (no args).
+# Only public SSH setup command (no args). Internals: _ssh_host_local / _ssh_pub.
 ssh-manage() {
   if [[ $# -ne 0 ]]; then
     printf 'usage: ssh-manage\n' >&2
-    printf '  1) Set Host        — ssh-host-local (host / hostname / user)\n' >&2
-    printf '  2) Set Public Key  — ssh-pub (host from config.local, key from Bitwarden)\n' >&2
+    printf '  1) Set Host        — host / hostname / user → ~/.ssh/config.local\n' >&2
+    printf '  2) Set Public Key  — pick Host, pick Bitwarden key → ~/.ssh/<key>.pub + IdentityFile\n' >&2
     return 2
   fi
   local tty mode host hostname user key
@@ -773,14 +738,14 @@ ssh-manage() {
       host="$(_ssh_read_text host 'SSH alias you type (vps, github.com)')" || return
       hostname="$(_ssh_read_text hostname 'real name (DNS, IP, or ssh.github.com)')" || return
       user="$(_ssh_read_text user 'remote user (git, alice)')" || return
-      ssh-host-local "$host" "$hostname" "$user"
+      _ssh_host_local "$host" "$hostname" "$user"
       ;;
     2)
       host="$(_ssh_list_local_hosts | _ssh_pick_line host 'Host aliases in ~/.ssh/config.local (Set Host first)')" || return
       host="${host%% *}"
       key="$(_ssh_list_agent_key_comments | _ssh_pick_line key 'Bitwarden SSH key comment from the agent')" || return
       key="${key%% *}"
-      ssh-pub "$host" "$key"
+      _ssh_pub "$host" "$key"
       ;;
     *)
       printf 'ssh-manage: choose 1 or 2\n' >&2
