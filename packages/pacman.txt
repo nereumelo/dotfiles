@@ -1,6 +1,6 @@
 # Core / stack
 base-devel
-git
+git  # >= 2.36 (includeIf hasconfig:remote.*.url)
 curl
 chezmoi
 mise

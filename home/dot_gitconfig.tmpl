@@ -1,4 +1,4 @@
-# Managed by chezmoi — personal defaults; work via includeIf ~/work/
+# Managed by chezmoi — personal defaults; org profiles via remote URL (hasconfig)
 
 [user]
 	name = {{ .git.name | quote }}
@@ -24,5 +24,28 @@
 	gpgsign = true
 {{- end }}
 
-[includeIf "gitdir:~/work/"]
-	path = ~/.config/git/config-work
+{{- range $key, $val := .git }}
+{{- if and (kindIs "map" $val) (index $val "ssh_host") }}
+{{- $sshHost := index $val "ssh_host" }}
+{{- if $sshHost }}
+
+# Stored remote stays git@github.com:{{ $key }}/repo.git; SSH uses Host {{ $sshHost }}.
+[url "git@{{ $sshHost }}:{{ $key }}/"]
+	insteadOf = git@github.com:{{ $key }}/
+	insteadOf = ssh://git@github.com/{{ $key }}/
+	insteadOf = https://github.com/{{ $key }}/
+{{- end }}
+{{- end }}
+{{- end }}
+{{- range $key, $val := .git }}
+{{- if and (kindIs "map" $val) (index $val "name") (index $val "email") }}
+
+# Same remote prefix as insteadOf: name/email/signing follow git@github.com:{{ $key }}/ (Git 2.36+).
+[includeIf "hasconfig:remote.*.url:git@github.com:{{ $key }}/**"]
+	path = ~/.config/git/config-{{ $key }}
+[includeIf "hasconfig:remote.*.url:ssh://git@github.com/{{ $key }}/**"]
+	path = ~/.config/git/config-{{ $key }}
+[includeIf "hasconfig:remote.*.url:https://github.com/{{ $key }}/**"]
+	path = ~/.config/git/config-{{ $key }}
+{{- end }}
+{{- end }}

@@ -23,6 +23,9 @@ die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"; }
 
+# shellcheck source=git-min-version.sh
+. "$REPO/git-min-version.sh"
+
 # --- Preflight ---
 [[ ${EUID:-$(id -u)} -eq 0 ]] && die "Do not run as root. Use: ./install.sh (sudo is invoked per-command)."
 SELF="$(id -un)"
@@ -96,6 +99,13 @@ log "Installing official packages (--needed)"
 mapfile -t PKGS < <(filter_pacman_list)
 if ((${#PKGS[@]})); then
   sudo pacman -S --needed --noconfirm "${PKGS[@]}"
+fi
+
+need_cmd git
+if git_at_least; then
+  log "git $(git_installed_version) (>= ${GIT_MIN_VERSION}, hasconfig:remote.*.url)"
+else
+  die "git $(git_installed_version) < ${GIT_MIN_VERSION} required for org identity routing (hasconfig:remote.*.url). Upgrade: sudo pacman -Syu git"
 fi
 
 # extra/opencode is OpenCode 1 (same binary name as v2). Remove 1.x only.
@@ -314,9 +324,10 @@ Next (manual):
   3. ssh-manage
      1) Set Host — github.com, vps, extra aliases
      2) Set Public Key — pick Host, pick Bitwarden key
-  4. Add home-personal.pub as a GitHub/GitLab Signing key
-  5. Open a new Windows WezTerm window (docker group + bashrc)
-  6. Until BW agent is ready, use: git commit --no-gpg-sign
+  4. setup-work — org Git name / email / ssh-host (github.com-<org>)
+  5. Add home-personal.pub as a GitHub/GitLab Signing key
+  6. Open a new Windows WezTerm window (docker group + bashrc)
+  7. Until BW agent is ready, use: git commit --no-gpg-sign
 
 Backup: $BACKUP_DIR
 Verify:  $REPO/verify.sh

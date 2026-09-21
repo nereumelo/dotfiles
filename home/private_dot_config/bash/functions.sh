@@ -615,10 +615,10 @@ _ssh_tty() {
 }
 
 _ssh_read_text() {
-  local field="$1" desc="$2" value=""
+  local cmd="$1" field="$2" desc="$3" value=""
   local tty
   tty="$(_ssh_tty)" || {
-    printf 'ssh-manage: need a tty\n' >&2
+    printf '%s: need a tty\n' "$cmd" >&2
     return 1
   }
   printf '%s (text) %s: ' "$field" "$desc" >"$tty"
@@ -626,25 +626,25 @@ _ssh_read_text() {
   value="${value#"${value%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
   if [[ -z "$value" ]]; then
-    printf 'ssh-manage: %s is required\n' "$field" >&2
+    printf '%s: %s is required\n' "$cmd" "$field" >&2
     return 1
   fi
   printf '%s\n' "$value"
 }
 
 _ssh_pick_line() {
-  local field="$1" desc="$2"
+  local cmd="$1" field="$2" desc="$3"
   local -a items=()
   local line tty n choice
   while IFS= read -r line; do
     [[ -n "$line" ]] && items+=("$line")
   done
   if ((${#items[@]} == 0)); then
-    printf 'ssh-manage: no %s to choose\n' "$field" >&2
+    printf '%s: no %s to choose\n' "$cmd" "$field" >&2
     return 1
   fi
   tty="$(_ssh_tty)" || {
-    printf 'ssh-manage: need a tty\n' >&2
+    printf '%s: need a tty\n' "$cmd" >&2
     return 1
   }
   if command -v fzf >/dev/null 2>&1; then
@@ -663,7 +663,7 @@ _ssh_pick_line() {
   printf 'Select [1-%d]: ' "${#items[@]}" >"$tty"
   IFS= read -r -e choice <"$tty" || return 1
   if [[ ! "$choice" =~ ^[1-9][0-9]*$ ]] || ((choice < 1 || choice > ${#items[@]})); then
-    printf 'ssh-manage: invalid selection\n' >&2
+    printf '%s: invalid selection\n' "$cmd" >&2
     return 1
   fi
   printf '%s\n' "${items[$((choice - 1))]}"
@@ -735,15 +735,15 @@ ssh-manage() {
   IFS= read -r -e mode <"$tty" || return 1
   case "$mode" in
     1)
-      host="$(_ssh_read_text host 'SSH alias you type (vps, github.com)')" || return
-      hostname="$(_ssh_read_text hostname 'real name (DNS, IP, or ssh.github.com)')" || return
-      user="$(_ssh_read_text user 'remote user (git, alice)')" || return
+      host="$(_ssh_read_text ssh-manage host 'SSH alias you type (vps, github.com)')" || return
+      hostname="$(_ssh_read_text ssh-manage hostname 'real name (DNS, IP, or ssh.github.com)')" || return
+      user="$(_ssh_read_text ssh-manage user 'remote user (git, alice)')" || return
       _ssh_host_local "$host" "$hostname" "$user"
       ;;
     2)
-      host="$(_ssh_list_local_hosts | _ssh_pick_line host 'Host aliases in ~/.ssh/config.local (Set Host first)')" || return
+      host="$(_ssh_list_local_hosts | _ssh_pick_line ssh-manage host 'Host aliases in ~/.ssh/config.local (Set Host first)')" || return
       host="${host%% *}"
-      key="$(_ssh_list_agent_key_comments | _ssh_pick_line key 'Bitwarden SSH key comment from the agent')" || return
+      key="$(_ssh_list_agent_key_comments | _ssh_pick_line ssh-manage key 'Bitwarden SSH key comment from the agent')" || return
       key="${key%% *}"
       _ssh_pub "$host" "$key"
       ;;
@@ -752,4 +752,122 @@ ssh-manage() {
       return 2
       ;;
   esac
+}
+
+# github.com-acme → acme. Host github.com is personal, not an org profile.
+_git_org_from_ssh_host() {
+  local host="$1"
+  if [[ "$host" == github.com ]]; then
+    printf 'setup-work: ssh-host github.com is personal — pick github.com-<org>\n' >&2
+    return 1
+  fi
+  local org="$host"
+  if [[ "$host" == github.com-* ]]; then
+    org="${host#github.com-}"
+  fi
+  if [[ ! "$org" =~ ^[A-Za-z][A-Za-z0-9_-]*$ ]]; then
+    printf 'setup-work: org %s is not a TOML table name\n' "$org" >&2
+    return 1
+  fi
+  if [[ "$org" == name || "$org" == email ]]; then
+    printf 'setup-work: org %s collides with [git] keys\n' "$org" >&2
+    return 1
+  fi
+  printf '%s\n' "$org"
+}
+
+_git_chezmoi_data() {
+  local src
+  if command -v chezmoi >/dev/null 2>&1; then
+    src="$(chezmoi source-path 2>/dev/null)" || src=""
+    if [[ -n "$src" && -f "$src/.chezmoidata.toml" ]]; then
+      printf '%s\n' "$src/.chezmoidata.toml"
+      return 0
+    fi
+  fi
+  if [[ -f "${HOME}/me/dotfiles/home/.chezmoidata.toml" ]]; then
+    printf '%s\n' "${HOME}/me/dotfiles/home/.chezmoidata.toml"
+    return 0
+  fi
+  printf 'setup-work: chezmoi source .chezmoidata.toml not found\n' >&2
+  return 1
+}
+
+# Replace or append [git.<org>] (name, email, ssh_host). No enabled flag.
+_git_upsert_org_section() {
+  local data="$1" org="$2" name="$3" email="$4" ssh_host="$5"
+  python3 - "$data" "$org" "$name" "$email" "$ssh_host" <<'PY'
+import re, sys
+from pathlib import Path
+
+path, org, name, email, ssh_host = sys.argv[1:6]
+if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", org):
+    sys.exit("setup-work: invalid org")
+
+def quote(s: str) -> str:
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+text = Path(path).read_text()
+header_re = re.compile(rf"^\[git\.{re.escape(org)}\]\s*$")
+out = []
+skip = False
+for line in text.splitlines(keepends=True):
+    if header_re.match(line):
+        skip = True
+        continue
+    if skip and re.match(r"^\s*\[", line):
+        skip = False
+    if skip:
+        continue
+    out.append(line)
+body = "".join(out).rstrip() + "\n\n"
+body += f"[git.{org}]\n"
+body += f"name = {quote(name)}\n"
+body += f"email = {quote(email)}\n"
+body += f"ssh_host = {quote(ssh_host)}\n"
+Path(path).write_text(body)
+PY
+}
+
+# Keep in sync with git-min-version.sh (install.sh / verify.sh).
+_GIT_MIN_VERSION=2.36
+_git_at_least() {
+  local min="${1:-$_GIT_MIN_VERSION}" have
+  have="$(git version 2>/dev/null | awk '{print $3}')"
+  [[ -n "$have" ]] && [[ "$(printf '%s\n' "$min" "$have" | sort -V | head -1)" == "$min" ]]
+}
+
+# Org Git identity + insteadOf. ssh-manage only owns Host / IdentityFile.
+setup-work() {
+  if [[ $# -ne 0 ]]; then
+    printf 'usage: setup-work\n' >&2
+    printf 'Writes [git.<org>] to chezmoi (.chezmoidata.toml). org comes from ssh-host.\n' >&2
+    return 2
+  fi
+  local tty name email ssh_host org data
+  tty="$(_ssh_tty)" || {
+    printf 'setup-work: need a tty\n' >&2
+    return 1
+  }
+  printf 'setup-work\n' >"$tty"
+  if ! _git_at_least; then
+    printf 'setup-work: git >= %s required (hasconfig:remote.*.url). sudo pacman -Syu git\n' "$_GIT_MIN_VERSION" >&2
+    return 1
+  fi
+  name="$(_ssh_read_text setup-work name 'Git user.name for this org')" || return
+  email="$(_ssh_read_text setup-work email 'Git user.email for this org')" || return
+  if [[ "$email" != *@* || "$email" =~ [[:space:]] ]]; then
+    printf 'setup-work: email looks invalid\n' >&2
+    return 2
+  fi
+  ssh_host="$(_ssh_list_local_hosts | _ssh_pick_line setup-work ssh-host 'Host aliases from ssh-manage (github.com-<org>)')" || return
+  ssh_host="${ssh_host%% *}"
+  org="$(_git_org_from_ssh_host "$ssh_host")" || return
+  data="$(_git_chezmoi_data)" || return
+  _git_upsert_org_section "$data" "$org" "$name" "$email" "$ssh_host" || return
+  if command -v chezmoi >/dev/null 2>&1; then
+    chezmoi apply || printf 'setup-work: wrote [git.%s]; chezmoi apply failed\n' "$org" >&2
+  fi
+  printf 'Wrote [git.%s] name=%s email=%s ssh_host=%s (remote git@github.com:%s/…)\n' \
+    "$org" "$name" "$email" "$ssh_host" "$org"
 }

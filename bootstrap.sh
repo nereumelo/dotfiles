@@ -290,6 +290,10 @@ main() {
   local_repo="$(local_repo_from_script || true)"
   sync_repo "$dest" "$user" "$local_repo"
   [[ -f "$dest/install.sh" ]] || die "install.sh missing in $dest"
+  # shellcheck source=git-min-version.sh
+  . "$dest/git-min-version.sh"
+  command -v git >/dev/null 2>&1 || die "git missing after pacman"
+  git_at_least || die "git $(git_installed_version) < ${GIT_MIN_VERSION} required (hasconfig:remote.*.url). pacman -Syu git"
 
   if [[ "$SKIP_INSTALL" == "1" ]]; then
     log "DOTFILES_SKIP_INSTALL=1 — not running install.sh"

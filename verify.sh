@@ -12,6 +12,10 @@ soft() { printf '  [warn] %s\n' "$*"; WARN=$((WARN + 1)); }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=git-min-version.sh
+. "$REPO/git-min-version.sh"
+
 echo "== Commands =="
 for c in \
   bash chezmoi mise starship nvim zoxide fzf eza atuin bat glow fd rg btm sd jq yq \
@@ -105,6 +109,19 @@ if grep -qE '^ssh-manage\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; the
   ok "ssh-manage() in functions.sh"
 else
   soft "ssh-manage() missing — chezmoi apply?"
+fi
+if grep -qE '^setup-work\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; then
+  ok "setup-work() in functions.sh"
+else
+  soft "setup-work() missing — chezmoi apply?"
+fi
+if have git; then
+  git_ver="$(git_installed_version)"
+  if git_at_least; then
+    ok "git $git_ver (>= ${GIT_MIN_VERSION}, hasconfig:remote.*.url)"
+  else
+    bad "git ${git_ver:-unknown} < ${GIT_MIN_VERSION} required (hasconfig:remote.*.url). Upgrade: sudo pacman -Syu git"
+  fi
 fi
 if grep -qE '^ssh-host-local\(\)|^ssh-pub\(\)' "$HOME/.config/bash/functions.sh" 2>/dev/null; then
   soft "ssh-host-local/ssh-pub still public — chezmoi apply? use ssh-manage"
