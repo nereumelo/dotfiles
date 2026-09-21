@@ -24,5 +24,26 @@
 	gpgsign = true
 {{- end }}
 
+{{- $sshHost := "" -}}
+{{- if index .git.work "ssh_host" -}}
+{{- $sshHost = .git.work.ssh_host -}}
+{{- end -}}
+{{- $orgs := list -}}
+{{- if index .git.work "orgs" -}}
+{{- $orgs = .git.work.orgs -}}
+{{- end -}}
+{{- if and $sshHost $orgs }}
+{{- range $org := $orgs }}
+{{- if $org }}
+
+# Stored remote stays git@github.com:{{ $org }}/repo.git; SSH uses Host {{ $sshHost }}.
+[url "git@{{ $sshHost }}:{{ $org }}/"]
+	insteadOf = git@github.com:{{ $org }}/
+	insteadOf = ssh://git@github.com/{{ $org }}/
+	insteadOf = https://github.com/{{ $org }}/
+{{- end }}
+{{- end }}
+{{- end }}
+
 [includeIf "gitdir:~/work/"]
 	path = ~/.config/git/config-work

@@ -128,7 +128,7 @@ Sudo only for system pacman, system units, usermod, chsh. Linux bootstrap grants
 
 ## Git / SSH / signing
 
-- Personal identity from `.chezmoidata.toml`; work via `includeIf "gitdir:~/work/"` → `~/.config/git/config-work` (`ssh_host` rewrites `git@github.com:` to the work SSH alias)
+- Personal identity from `.chezmoidata.toml`; work via `includeIf "gitdir:~/work/"` → `~/.config/git/config-work`. Work GitHub remotes stay `git@github.com:org/repo.git`; `git.work.orgs` + `ssh_host` rewrite only that org prefix to the SSH Host alias.
 - `EDITOR` / `VISUAL` / `GIT_EDITOR=nvim` from bashrc (no `core.editor`)
 - SSH commit signing with `~/.ssh/home-personal.pub`; agent via `SSH_AUTH_SOCK` → `~/.bitwarden-ssh-agent-notify.sock` (proxy) → `~/.bitwarden-ssh-agent.sock`
 - `~/.ssh/config` is chezmoi-managed. It `Include`s gitignored `~/.ssh/config.local` (`HostName`, `User`, `IdentityAgent`, `IdentitiesOnly`) and then inlines `IdentityFile` from `~/.ssh/config.identity`. HostName/User are not in git.
@@ -159,7 +159,7 @@ Bitwarden has no OS notification for SSH authorization. `bitwarden-ssh-notify` p
 
 ### Hosts in `config.local`
 
-One SSH alias per `Host` block. `<host>` is the alias you type (`ssh vps`, `git@github.com-acme`); `<hostname>` is the real name (`github.com`, `ssh.github.com`, an IP).
+One SSH alias per `Host` block. `<host>` is the alias you type (`ssh vps`, `ssh git@github.com-acme`); `<hostname>` is the real name (`github.com`, `ssh.github.com`, an IP). Git remotes stay `git@github.com:org/repo.git`.
 
 `install.sh` does not seed Hosts. `IdentityAgent` and `IdentitiesOnly` are not prompts. Re-running Set Host is a no-op: `Port` and other extra keys in `config.local` stay put.
 
@@ -173,12 +173,12 @@ Set Public Key is idempotent when the `.pub` and `IdentityFile` already match. I
 
 ### Extra GitHub accounts / orgs
 
-SSH never reads `<org>` from `git@github.com:org/repo.git`. Two Host aliases, same `HostName github.com`:
+Git remotes are always `git@github.com:<owner>/<repo>.git`. OpenSSH does not read `<owner>`; Git maps org prefixes to an SSH Host alias (`insteadOf`).
 
-| Remote | Host block | Key |
-|--------|------------|-----|
-| `git@github.com:…` | `github.com` | personal (`home-personal`) |
-| `git@github.com-acme:…` | `github.com-acme` | work (`work`) |
+| Remote (stored) | SSH Host | Key |
+|-----------------|----------|-----|
+| `git@github.com:nereumelo/…` | `github.com` | personal (`home-personal`) |
+| `git@github.com:acme/…` | `github.com-acme` | work (`work`) |
 
 ```bash
 ssh-manage   # 1) Set Host: github.com / github.com / git
@@ -188,16 +188,7 @@ ssh-manage   # 1) Set Host: github.com-acme / github.com / git
 ssh-manage   # 2) Set Public Key: github.com-acme → work
 ```
 
-Add `home-personal.pub` on the personal GitHub account and `work.pub` on the work/org account (Authentication Key). Then:
-
-```bash
-git clone git@github.com:nereumelo/dotfiles.git          # personal key
-git clone git@github.com-acme:acme/repo.git              # work key
-ssh -T git@github.com
-ssh -T git@github.com-acme
-```
-
-Work repos in `~/work/` can keep GitHub’s default `git@github.com:org/repo.git` URL. Set in `.chezmoidata.toml`:
+Add `home-personal.pub` on the personal GitHub account and `work.pub` on the work/org account (Authentication Key). In `.chezmoidata.toml`:
 
 ```toml
 [git.work]
@@ -205,9 +196,19 @@ enabled = true
 name = "..."
 email = "..."
 ssh_host = "github.com-acme"
+orgs = ["acme"]
 ```
 
-`chezmoi apply` writes `url.insteadOf` in `~/.config/git/config-work`, so under `~/work/` Git rewrites `git@github.com:` → `git@github.com-acme:` (work key + work name/email/`work.pub` signing). Outside `~/work/`, `git@github.com` stays personal. `git remote -v` still shows `github.com`; `git ls-remote --get-url origin` shows the alias.
+`chezmoi apply` writes `url.insteadOf` in `~/.gitconfig` for each org: `git@github.com:acme/` → `git@github.com-acme:acme/` (work key). Other owners on `github.com` stay personal. `git remote -v` shows `git@github.com:acme/repo.git`; `git ls-remote --get-url origin` shows the SSH alias.
+
+```bash
+git clone git@github.com:nereumelo/dotfiles.git   # personal key
+git clone git@github.com:acme/repo.git            # work key (org acme)
+ssh -T git@github.com
+ssh -T git@github.com-acme
+```
+
+Work **name/email/signing** (`work.pub`) still apply only under `~/work/` (`includeIf`). SSH org routing is global.
 
 GitHub over 443 / Enterprise — Set Host with a different hostname (keep `Port` if you add it; Set Host will not drop it):
 

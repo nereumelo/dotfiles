@@ -5,13 +5,14 @@ name = "Nereu Melo"
 email = "nereuvictor1@gmail.com"
 
 # Optional work profile (includeIf gitdir:~/work/). Leave enabled=false until filled in.
-# ssh_host is the SSH Host alias (ssh-manage Set Host), e.g. "github.com-acme".
-# Under ~/work/, Git rewrites git@github.com: → git@<ssh_host>: so the work key is used.
+# Remotes stay git@github.com:org/repo.git. ssh_host is the SSH Host alias (ssh-manage);
+# orgs are rewritten only for that path prefix (git@github.com:acme/ → Host github.com-acme).
 [git.work]
 enabled = false
 name = ""
 email = ""
 ssh_host = ""
+orgs = []
 
 [themes.tokyo-night]
 herdr = "tokyo-night"
