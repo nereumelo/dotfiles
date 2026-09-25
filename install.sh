@@ -307,8 +307,8 @@ if pacman -Q wezterm >/dev/null 2>&1; then
 fi
 
 # --- wsl.conf hint ---
-if [[ -r /etc/wsl.conf ]] && grep -qi 'appendWindowsPath\s*=\s*true' /etc/wsl.conf; then
-  warn "appendWindowsPath=true in /etc/wsl.conf can shadow Linux tools with *.exe"
+if [[ -r /etc/wsl.conf ]] && grep -qi 'appendWindowsPath\s*=\s*false' /etc/wsl.conf; then
+  warn "appendWindowsPath=false hides Windows CLIs (e.g. Cursor) from PATH"
   warn "See $REPO/config/wsl.conf.example (not applied automatically)"
 fi
 

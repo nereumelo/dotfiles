@@ -214,7 +214,7 @@ sync_repo() {
 
 write_wsl_conf() {
   local user=$1
-  log "Writing /etc/wsl.conf (default user ${user}, systemd, Linux PATH first)"
+  log "Writing /etc/wsl.conf (default user ${user}, systemd, Windows PATH appended)"
   cat >/etc/wsl.conf <<EOF
 [boot]
 systemd=true
@@ -224,7 +224,7 @@ default=${user}
 
 [interop]
 enabled=true
-appendWindowsPath=false
+appendWindowsPath=true
 EOF
 }
 

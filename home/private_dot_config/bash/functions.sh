@@ -5,7 +5,7 @@ mkcd() {
   mkdir -p -- "$1" && cd -- "$1" || return
 }
 
-# Windows binaries are not on PATH (wsl.conf appendWindowsPath=false).
+# Resolve a Windows .exe by absolute /mnt/c path (works with or without Windows PATH).
 _windows_exe() {
   local p
   for p in "$@"; do

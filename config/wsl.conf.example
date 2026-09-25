@@ -1,9 +1,9 @@
-# Recommended /etc/wsl.conf for a Linux-first Arch WSL devops shell.
-# install.sh warns if appendWindowsPath is true; it does NOT rewrite this file.
-# Apply manually, then restart the distro: wsl --shutdown (from Windows).
+# Recommended /etc/wsl.conf for Arch WSL (Cursor/Windows CLIs on PATH).
+# install.sh does NOT rewrite this file. Apply manually or via bootstrap.sh,
+# then restart the distro: wsl --shutdown (from Windows).
 
 [boot]
 systemd=true
 
 [interop]
-appendWindowsPath=false
+appendWindowsPath=true

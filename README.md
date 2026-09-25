@@ -87,7 +87,7 @@ WSL_USER=yourname WSL_PASSWORD='…' curl -fsSL https://raw.githubusercontent.co
 `bootstrap.sh` prompts for a username and password, then:
 
 1. Repairs the pacman keyring and installs `sudo` + `git`
-2. Creates the user (`wheel`, bash), sudoers, `en_US.UTF-8`, and `/etc/wsl.conf` (systemd, that user as default, `appendWindowsPath=false`)
+2. Creates the user (`wheel`, bash), sudoers, `en_US.UTF-8`, and `/etc/wsl.conf` (systemd, that user as default, `appendWindowsPath=true`)
 3. Clones this repo to `~/me/dotfiles` (or copies the local tree if you ran `bootstrap.sh` from a checkout)
 4. Runs `./install.sh` as that user (packages, paru, chezmoi, tools) — **not** Linux WezTerm
 
@@ -274,7 +274,7 @@ WezTerm is a **Windows** app. `bootstrap.ps1` installs it and writes `%USERPROFI
 - Clipboard: select copies; **Ctrl+C** copies when there is a selection (otherwise interrupt); **Ctrl+V** pastes
 - Links: click or **Ctrl+click** opens the Windows default browser (`OpenLinkAtMouseCursor`). Copy-on-select left-click had replaced WezTerm's default, so Ctrl+click did nothing until this binding was restored
 
-CLI tools (`claude`, `gh`, `xdg-open`) cannot see `cmd.exe` because `appendWindowsPath=false`. `~/.local/bin/windows-open` (and an `xdg-open` shim) call Windows PowerShell `Start-Process`. `BROWSER` / `GH_BROWSER` point at that script after a new shell (`chezmoi apply`).
+`~/.local/bin/windows-open` (and an `xdg-open` shim) call Windows PowerShell `Start-Process` for a stable default-handler bridge. `BROWSER` / `GH_BROWSER` point at that script after a new shell (`chezmoi apply`). With `appendWindowsPath=true`, Windows CLIs such as Cursor are also on PATH.
 
 Interactive bash helpers in `~/.config/bash/functions.sh` (SSH: `ssh-manage` / `setup-work` above):
 

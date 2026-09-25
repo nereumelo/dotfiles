@@ -56,7 +56,7 @@ else
   export SSH_AUTH_SOCK="${HOME}/.bitwarden-ssh-agent.sock"
 fi
 
-# Open OAuth/docs in the Windows browser (appendWindowsPath=false → no cmd.exe on PATH).
+# Prefer windows-open for OAuth/docs (stable even if Windows PATH order varies).
 export BROWSER="${HOME}/.local/bin/windows-open"
 export GH_BROWSER="${BROWSER}"
 
