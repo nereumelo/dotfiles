@@ -105,7 +105,7 @@ else
   soft "No SIGN_REQUEST log yet — git/ssh/commit through the proxy writes $_notify_log (journalctl --user -u bitwarden-ssh-notify)"
 fi
 if have python3; then ok "python3 → $(command -v python3)"; else soft "python3 missing — bitwarden-ssh-notify"; fi
-if have xdotool; then ok "xdotool → $(command -v xdotool)"; else soft "xdotool missing — cannot raise Bitwarden window"; fi
+if [[ -x /mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/powershell.exe ]]; then ok "powershell.exe → can raise Bitwarden window"; else soft "powershell.exe missing — cannot raise Bitwarden window"; fi
 if [[ -f "$HOME/.ssh/config" ]] && grep -qE '^Include[[:space:]]+config\.local' "$HOME/.ssh/config"; then
   ok "ssh config Includes config.local"
 else

@@ -7,7 +7,7 @@ The real Bitwarden socket stays ~/.bitwarden-ssh-agent.sock.
 SIGN_REQUEST is logged every time (no debounce) to
 ~/.local/share/bitwarden-ssh-notify.log and stderr (systemd journal).
 Bitwarden's UI shows this proxy (python3) as the peer; the log has the
-real client PID/cmdline/cwd/parent chain. WezTerm OSC 777 + xdotool stay
+real client PID/cmdline/cwd/parent chain. WezTerm OSC 777 + the Windows window raise stay
 debounced.
 """
 from __future__ import annotations
@@ -30,6 +30,7 @@ LOG_PATH = os.path.join(HOME, ".local", "share", "bitwarden-ssh-notify.log")
 LOG_MAX = 1_000_000
 SSH2_AGENT_IDENTITIES_ANSWER = 12
 SSH2_AGENTC_SIGN_REQUEST = 13
+SSH_AGENT_FAILURE = 5
 DEBOUNCE_SEC = 8.0
 MAX_MSG = 256 * 1024
 PARENT_LIMIT = 10
@@ -43,6 +44,7 @@ _ident_comments: dict[bytes, str] = {}
 SO_PEERCRED = 17  # Linux
 NOTIFY_TITLE = "Bitwarden SSH"
 NOTIFY_BODY = "Authorize the SSH key in Bitwarden Desktop"
+REFUSED_MESSAGE = b"bitwarden-ssh: request not approved (denied, timed out or vault locked)\r\n"
 
 
 def recvall(sock: socket.socket, n: int) -> bytes | None:
@@ -128,31 +130,51 @@ def wezterm_alert_bytes() -> bytes:
     )
 
 
+POWERSHELL = "/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/powershell.exe"
+# WSLg windows are owned by msrdc.exe on Windows, so xdotool cannot focus them. Wait for the
+# Bitwarden window (it may only appear after the request), restore it and force it to the front.
+FOREGROUND_PS = r"""
+Add-Type -Namespace W -Name U -MemberDefinition '
+public delegate bool EnumProc(IntPtr h, IntPtr l);
+[DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc p, IntPtr l);
+[DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int c);
+[DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, UIntPtr e);'
+$deadline = (Get-Date).AddSeconds(12)
+do {
+  $script:found = @()
+  $cb = [W.U+EnumProc]{ param($h, $l)
+    $s = New-Object System.Text.StringBuilder 256
+    [W.U]::GetWindowText($h, $s, 256) | Out-Null
+    if ($s.ToString() -like 'Bitwarden*') { $script:found += $h }
+    return $true }
+  [W.U]::EnumWindows($cb, [IntPtr]::Zero) | Out-Null
+  if ($script:found.Count -gt 0) { break }
+  Start-Sleep -Milliseconds 250
+} while ((Get-Date) -lt $deadline)
+foreach ($h in $script:found) {
+  [W.U]::ShowWindowAsync($h, 9) | Out-Null
+  [W.U]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+  [W.U]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+  [W.U]::SetForegroundWindow($h) | Out-Null
+}
+"""
+
+
 def raise_bitwarden() -> None:
-    display = os.environ.get("DISPLAY") or ":0"
-    xdotool = "/usr/bin/xdotool"
-    if not os.access(xdotool, os.X_OK):
+    if not os.access(POWERSHELL, os.X_OK):
         return
-    env = os.environ.copy()
-    env["DISPLAY"] = display
+    encoded = base64.b64encode(FOREGROUND_PS.encode("utf-16-le")).decode()
     subprocess.Popen(
-        [
-            xdotool,
-            "search",
-            "--onlyvisible",
-            "--class",
-            "bitwarden",
-            "windowactivate",
-            "windowraise",
-        ],
+        [POWERSHELL, "-NoProfile", "-EncodedCommand", encoded],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        env=env,
     )
 
 
 def alert(client: socket.socket | None = None, *, force: bool = False) -> bool:
-    """WezTerm + xdotool. Debounced unless force. Returns whether UI fired."""
+    """WezTerm + window raise. Debounced unless force. Returns whether UI fired."""
     global _last_alert
     now = time.monotonic()
     with _last_lock:
@@ -478,7 +500,10 @@ def log_test_event(*, force: bool) -> None:
 
 
 def pipe_backend_to_client(backend: socket.socket, client: socket.socket) -> None:
+    # SSH_AGENT_FAILURE is how Bitwarden says "not approved / vault locked / timed out";
+    # ssh/git only print a generic "Permission denied (publickey)" afterwards.
     buf = bytearray()
+    pid = peer_pid(client)
     try:
         while True:
             data = backend.recv(65536)
@@ -494,6 +519,8 @@ def pipe_backend_to_client(backend: socket.socket, client: socket.socket) -> Non
                 if frame is None:
                     break
                 remember_identities(frame)
+                if frame[4] == SSH_AGENT_FAILURE and pid:
+                    write_to_peer_tty(pid, REFUSED_MESSAGE)
     except OSError:
         pass
     finally:
