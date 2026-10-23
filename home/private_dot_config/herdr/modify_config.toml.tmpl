@@ -1,0 +1,26 @@
+{{- $t := index .themes .theme -}}
+#!/usr/bin/env bash
+# Managed by chezmoi — theme only: overlays [theme] onto whatever herdr already
+# wrote to this file (onboarding, [ui], ...) instead of overwriting it whole.
+set -euo pipefail
+
+name={{ index $t "herdr" | quote }}
+current="$(cat)"
+
+if [[ -z "$current" ]]; then
+  printf '# Managed by chezmoi — theme only (do not manage whole ~/.config/herdr/)\n\n[theme]\nname = "%s"\nauto_switch = false\n' "$name"
+  exit 0
+fi
+
+if printf '%s\n' "$current" | grep -qE '^\[theme\]'; then
+  printf '%s\n' "$current" | awk -v name="$name" '
+    /^\[theme\]/ { intheme=1; print; next }
+    /^\[/ { intheme=0 }
+    intheme && /^name[[:space:]]*=/ { print "name = \"" name "\""; next }
+    intheme && /^auto_switch[[:space:]]*=/ { print "auto_switch = false"; next }
+    { print }
+  '
+else
+  printf '%s\n' "$current"
+  printf '\n[theme]\nname = "%s"\nauto_switch = false\n' "$name"
+fi
