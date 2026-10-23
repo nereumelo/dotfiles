@@ -30,7 +30,7 @@ _git_sign_for() {
   ' "$idf")"
   [[ -n "$sign" ]] || return 0
   if [[ "$sign" == '~/'* ]]; then
-    sign="${HOME}/${sign#~/}"
+    sign="${HOME}/${sign#\~/}"
   fi
   printf '%s\n' "$sign"
 }

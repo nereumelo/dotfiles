@@ -23,3 +23,8 @@ nvim_style = "night"
 bat = "Catppuccin Mocha"
 starship = "catppuccin"
 opencode = "catppuccin"
+
+[git.naturacode]
+name = "Nereu Melo"
+email = "nereumelo.sysmap@natura.net"
+ssh_host = "github.com-naturacode"
